@@ -149,6 +149,22 @@ export async function listFacades(h: DbHandle): Promise<Facade[]> {
   }));
 }
 
+/**
+ * FacadeIds that have at least one Award for `amount`. One indexed query over
+ * all facades — used to flag which bet lines have results in the picker.
+ */
+export async function findFacadesWithAmount(
+  h: DbHandle,
+  amount: number
+): Promise<number[]> {
+  const { rows } = await h.sqlite3.execWithParams(
+    h.db,
+    "SELECT DISTINCT FacadeId FROM Award WHERE Amount=? ORDER BY FacadeId",
+    [amount]
+  );
+  return rows.map((r: any[]) => Number(r[0]));
+}
+
 export async function findAwardsByAmount(
   h: DbHandle,
   facadeId: number,
@@ -197,4 +213,49 @@ export async function getReelStops(
     [award.sequenceStart, hi, limit]
   );
   return rows.map((r: any[]) => parseRng(r[0]));
+}
+
+/**
+ * ReelStop candidates for an award that match a positional pattern. `pattern`
+ * is one constraint per reel position: a number the stop must equal, or null =
+ * wildcard (any value). Scans the award's PresentationId range up to `scanCap`
+ * rows and filters by the pattern in JS — RngValues is a comma string of
+ * variable-width numbers, so a positional match is unreliable in SQL. The cap
+ * bounds work since award ranges can be large.
+ */
+export async function findMatchingReelStops(
+  h: DbHandle,
+  award: Award,
+  pattern: (number | null)[],
+  scanCap = 2000
+): Promise<number[][]> {
+  const hi = award.sequenceStart + award.totalCount - 1;
+  const { rows } = await h.sqlite3.execWithParams(
+    h.db,
+    "SELECT RngValues FROM Presentation WHERE PresentationId BETWEEN ? AND ? LIMIT ?",
+    [award.sequenceStart, hi, scanCap]
+  );
+  const matches: number[][] = [];
+  for (const r of rows as any[][]) {
+    const rs = parseRng(r[0]);
+    if (matchesPattern(rs, pattern)) matches.push(rs);
+  }
+  return matches;
+}
+
+/**
+ * True when `rs` satisfies `pattern`: at every index where the pattern has a
+ * number, rs must equal it; null entries (and positions beyond the pattern's
+ * length) are unconstrained. An empty/all-null pattern matches everything.
+ */
+export function matchesPattern(
+  rs: number[],
+  pattern: (number | null)[]
+): boolean {
+  for (let i = 0; i < pattern.length; i++) {
+    const want = pattern[i];
+    if (want == null) continue;
+    if (rs[i] !== want) return false;
+  }
+  return true;
 }

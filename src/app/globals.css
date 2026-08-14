@@ -555,6 +555,25 @@ body {
   flex-direction: column;
   gap: 4px;
 }
+.db-field-grow {
+  flex: 1 1 200px;
+}
+.db-search {
+  min-width: 160px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+.db-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.db-check input {
+  accent-color: var(--accent);
+}
 .db-label {
   font-size: 11.5px;
   color: var(--muted);
@@ -581,40 +600,99 @@ body {
   border-radius: 8px;
   padding: 10px 12px;
 }
+.award-card.empty {
+  opacity: 0.5;
+}
 .award-head {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-bottom: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.award-head:disabled {
+  cursor: default;
+}
+.award-head-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.award-caret {
+  width: 12px;
+  color: var(--muted);
+  font-size: 11px;
 }
 .award-title {
   font-weight: 600;
 }
+.award-badge {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-weight: 700;
+  background: rgba(74, 217, 145, 0.18);
+  color: var(--free);
+}
+.award-badge-empty {
+  background: var(--panel);
+  color: var(--muted);
+}
 .reelstop-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
+  margin-top: 8px;
 }
 .reelstop {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 4px 8px;
-  cursor: pointer;
+  padding: 4px 6px 4px 8px;
   color: var(--text);
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
 }
-.reelstop:hover {
-  border-color: var(--accent);
+.reelstop-vals {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
 }
-.reelstop-copy {
+.reelstop-btn {
+  flex: 0 0 auto;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 2px 6px;
+  cursor: pointer;
   font-family: system-ui, sans-serif;
   font-size: 10.5px;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.4px;
+}
+.reelstop-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.reelstop-apply {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
 }

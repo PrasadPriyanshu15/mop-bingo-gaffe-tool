@@ -24,6 +24,11 @@ export default function Home() {
   // Per-pattern selection threshold: the lowest chosen ballQty. Every instance
   // with ballQty >= threshold is selected (selecting one cascades to higher).
   const [thresholds, setThresholds] = useState<Map<number, number>>(new Map());
+  // reelStops shown in the generated gaffe output. Seeded from the sample; the
+  // DB finder can overwrite it via the "+" button on a looked-up candidate.
+  const [reelStops, setReelStops] = useState<number[]>(
+    SAMPLE_GAFFE.reelStops ?? []
+  );
 
   const paytable = useMemo(
     () => data?.paytables.find((p) => p.facadeKey === betKey) ?? null,
@@ -229,7 +234,9 @@ export default function Home() {
             </div>
           )}
 
-          {canPick && <ReelStopFinder totalPayout={totalPayout} />}
+          {canPick && (
+            <ReelStopFinder totalPayout={totalPayout} onApply={setReelStops} />
+          )}
         </section>
 
         {canPick && (
@@ -241,7 +248,7 @@ export default function Home() {
             />
 
             <GaffeResult
-              reelStops={SAMPLE_GAFFE.reelStops ?? []}
+              reelStops={reelStops}
               bingoCard={SAMPLE_GAFFE.bingoCard}
               built={builtBallCalls}
               forcedNames={forcedNames}
