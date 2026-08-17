@@ -2,47 +2,32 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Award, DbHandle, Facade } from "@/lib/db";
+import { parsePattern, patternIsActive } from "@/lib/reelstop";
+import AwardResults, { type AwardResult } from "./AwardResults";
+
+export interface Win {
+  key: string;
+  label: string;
+  payout: number;
+}
 
 interface Props {
   /** Amount to search Award.Amount for — the tool's current total payout. */
   totalPayout: number;
+  /** The individual selected wins (one per ticked payout row). */
+  wins: Win[];
   /** Push a chosen reelStop candidate into the main generated gaffe output. */
   onApply: (reelStops: number[]) => void;
+  /** Report the opened DB handle upward so other panels can query it. */
+  onDbReady: (handle: DbHandle | null, facades: Facade[]) => void;
 }
 
-interface AwardResult {
-  award: Award;
-  facadeKey: string;
-  reelStops: number[][];
-}
-
-/**
- * Parse a positional search string into one constraint per reel position.
- * Each comma-separated token: empty (or non-numeric) → null = wildcard, else
- * the number the stop must equal. E.g. ",,,,,,,,2" → [null×8, 2] (9th = 2).
- */
-function parsePattern(s: string): (number | null)[] {
-  if (s.trim() === "") return [];
-  return s.split(",").map((tok) => {
-    const t = tok.trim();
-    if (t === "") return null;
-    const n = Number(t);
-    return Number.isNaN(n) ? null : n;
-  });
-}
-
-/**
- * True when `rs` satisfies `pattern`: at every index where the pattern has a
- * number, rs must equal it; null entries (and positions beyond the pattern's
- * length) are unconstrained. An empty/all-null pattern matches everything.
- */
-function matchesPattern(rs: number[], pattern: (number | null)[]): boolean {
-  for (let i = 0; i < pattern.length; i++) {
-    const want = pattern[i];
-    if (want == null) continue;
-    if (rs[i] !== want) return false;
-  }
-  return true;
+/** One amount searched, with its matching awards (across the target facades). */
+interface WinSection {
+  key: string;
+  label: string;
+  amount: number;
+  awards: AwardResult[];
 }
 
 /**
@@ -51,7 +36,12 @@ function matchesPattern(rs: number[], pattern: (number | null)[]): boolean {
  * The DB layer (wa-sqlite) is imported lazily so it stays out of the initial
  * bundle and only runs in the browser.
  */
-export default function ReelStopFinder({ totalPayout, onApply }: Props) {
+export default function ReelStopFinder({
+  totalPayout,
+  wins,
+  onApply,
+  onDbReady,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const handleRef = useRef<DbHandle | null>(null);
 
@@ -69,17 +59,20 @@ export default function ReelStopFinder({ totalPayout, onApply }: Props) {
 
   const [searching, setSearching] = useState(false);
   const [searchAll, setSearchAll] = useState(false);
-  const [results, setResults] = useState<AwardResult[] | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
-  const [applied, setApplied] = useState<string | null>(null);
+  // "total" = search the summed payout (default); "each" = search every
+  // selected win's payout on its own, in its own section.
+  const [mode, setMode] = useState<"total" | "each">("total");
+  const [sections, setSections] = useState<WinSection[] | null>(null);
+  // Which per-win sections are expanded (Each win mode). Collapsed by default
+  // so only the payout headers show until one is opened.
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
 
   // Positional filter (Update 3). Narrows shown candidates live; also honored
   // by find() to pull DB matches beyond the per-award display cap.
   const [pattern, setPattern] = useState("");
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
-  const parsedPattern = parsePattern(pattern);
-  const filterActive = parsedPattern.some((v) => v != null);
+  const multiWin = wins.length > 1;
+  const eachMode = mode === "each" && multiWin;
 
   // Flag which facades have any award for this amount, so the picker can mark
   // them. Cheap indexed query; re-runs when the payout changes.
@@ -105,7 +98,7 @@ export default function ReelStopFinder({ totalPayout, onApply }: Props) {
 
   async function handleFile(file: File) {
     setError(null);
-    setResults(null);
+    setSections(null);
     setStatus("opening");
     setFileName(`${file.name} (${(file.size / 1024 / 1024).toFixed(0)} MB)`);
     try {
@@ -117,9 +110,11 @@ export default function ReelStopFinder({ totalPayout, onApply }: Props) {
       setFacades(list);
       setFacadeId(list[0]?.facadeId ?? null);
       setStatus("ready");
+      onDbReady(h, list);
     } catch (e) {
       setStatus("idle");
       setError(e instanceof Error ? e.message : "Failed to open the database.");
+      onDbReady(null, []);
     }
   }
 
@@ -127,12 +122,12 @@ export default function ReelStopFinder({ totalPayout, onApply }: Props) {
     if (!handleRef.current || (facadeId == null && !searchAll)) return;
     setSearching(true);
     setError(null);
-    setResults(null);
-    setExpanded(new Set());
+    setSections(null);
+    setOpenSections(new Set());
     try {
       const db = await import("@/lib/db");
       const pat = parsePattern(pattern);
-      const active = pat.some((v) => v != null);
+      const active = patternIsActive(pat);
 
       // Which bet lines to search: just the selected one, or every facade that
       // has a matching award (the ✓-flagged set) when "search all" is on.
@@ -140,53 +135,41 @@ export default function ReelStopFinder({ totalPayout, onApply }: Props) {
         ? facades.filter((f) => facadesWithResults.has(f.facadeId))
         : facades.filter((f) => f.facadeId === facadeId);
 
-      const out: AwardResult[] = [];
-      for (const facade of targets) {
-        const awards = await db.findAwardsByAmount(
-          handleRef.current,
-          facade.facadeId,
-          totalPayout
-        );
-        for (const award of awards) {
-          // With a pattern, scan the award's range for all matches; otherwise
-          // just grab the first few candidates as before.
-          const reelStops = active
-            ? await db.findMatchingReelStops(handleRef.current, award, pat)
-            : await db.getReelStops(handleRef.current, award, 8);
-          out.push({ award, facadeKey: facade.facadeKey, reelStops });
+      // Which amounts to search: the summed total, or each selected win.
+      const amounts: { key: string; label: string; amount: number }[] = eachMode
+        ? wins.map((w) => ({ key: w.key, label: w.label, amount: w.payout }))
+        : [
+            {
+              key: "total",
+              label: `Total (${totalPayout.toLocaleString()})`,
+              amount: totalPayout,
+            },
+          ];
+
+      const out: WinSection[] = [];
+      for (const a of amounts) {
+        const awards: AwardResult[] = [];
+        for (const facade of targets) {
+          const found = await db.findAwardsByAmount(
+            handleRef.current,
+            facade.facadeId,
+            a.amount
+          );
+          for (const award of found) {
+            const reelStops = active
+              ? await db.findMatchingReelStops(handleRef.current, award, pat)
+              : await db.getReelStops(handleRef.current, award, 8);
+            awards.push({ award, facadeKey: facade.facadeKey, reelStops });
+          }
         }
+        out.push({ ...a, awards });
       }
-      setResults(out);
+      setSections(out);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Query failed.");
     } finally {
       setSearching(false);
     }
-  }
-
-  async function copy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(text);
-      setTimeout(() => setCopied(null), 1200);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  function apply(rs: number[], text: string) {
-    onApply(rs);
-    setApplied(text);
-    setTimeout(() => setApplied(null), 1200);
-  }
-
-  function toggle(awardId: number) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(awardId)) next.delete(awardId);
-      else next.add(awardId);
-      return next;
-    });
   }
 
   return (
@@ -243,6 +226,28 @@ export default function ReelStopFinder({ totalPayout, onApply }: Props) {
               <div className="db-amount">{totalPayout.toLocaleString()}</div>
             </div>
 
+            {multiWin && (
+              <div className="db-field">
+                <span className="db-label">Look up</span>
+                <div className="seg">
+                  <button
+                    type="button"
+                    className={"seg-btn" + (mode === "total" ? " on" : "")}
+                    onClick={() => setMode("total")}
+                  >
+                    Total win
+                  </button>
+                  <button
+                    type="button"
+                    className={"seg-btn" + (mode === "each" ? " on" : "")}
+                    onClick={() => setMode("each")}
+                  >
+                    Each win
+                  </button>
+                </div>
+              </div>
+            )}
+
             <label className="db-field db-field-grow">
               <span className="db-label">
                 reelStop filter (per position, blank = any)
@@ -273,99 +278,66 @@ export default function ReelStopFinder({ totalPayout, onApply }: Props) {
               onChange={(e) => setSearchAll(e.target.checked)}
             />
             <span>
-              Search all bet lines with results (
-              {facadesWithResults.size}) — not just the selected one
+              Search all bet lines with results ({facadesWithResults.size}) — not
+              just the selected one
             </span>
           </label>
 
-          {results && results.length === 0 && (
-            <p className="muted small">
-              No award with Amount = {totalPayout.toLocaleString()}
-              {searchAll ? " in any facade." : " in this facade."}
-            </p>
-          )}
-
-          {results && results.length > 0 && (
-            <div className="award-results">
-              {results.map(({ award, facadeKey, reelStops }) => {
-                const shown = filterActive
-                  ? reelStops.filter((rs) => matchesPattern(rs, parsedPattern))
-                  : reelStops;
-                const isEmpty = shown.length === 0;
-                const open = filterActive
-                  ? !isEmpty
-                  : expanded.has(award.awardId);
-                return (
-                  <div
-                    key={`${facadeKey}:${award.awardId}`}
-                    className={"award-card" + (isEmpty ? " empty" : "")}
-                  >
-                    <button
-                      type="button"
-                      className="award-head"
-                      onClick={() => !isEmpty && toggle(award.awardId)}
-                      disabled={isEmpty || filterActive}
-                      aria-expanded={open}
-                    >
-                      <span className="award-head-main">
-                        <span className="award-caret">
-                          {isEmpty ? "·" : open ? "▾" : "▸"}
+          {sections &&
+            (eachMode ? (
+              <div className="win-sections">
+                {sections.map((sec) => {
+                  const open = openSections.has(sec.key);
+                  return (
+                    <section key={sec.key} className="win-section">
+                      <button
+                        type="button"
+                        className="win-section-head"
+                        aria-expanded={open}
+                        onClick={() =>
+                          setOpenSections((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(sec.key)) next.delete(sec.key);
+                            else next.add(sec.key);
+                            return next;
+                          })
+                        }
+                      >
+                        <span className="win-section-caret">
+                          {open ? "▾" : "▸"}
                         </span>
-                        <span className="award-title">
-                          Award #{award.awardId}
+                        <span className="win-section-label">{sec.label}</span>
+                        <span className="award-badge">
+                          {sec.awards.length} award
+                          {sec.awards.length === 1 ? "" : "s"}
                         </span>
-                        <span
-                          className={
-                            "award-badge" + (isEmpty ? " award-badge-empty" : "")
-                          }
-                        >
-                          {isEmpty
-                            ? "no results"
-                            : `${shown.length} result${
-                                shown.length === 1 ? "" : "s"
-                              }`}
-                        </span>
-                      </span>
-                      <span className="muted small">
-                        {searchAll ? `${facadeKey} · ` : ""}tier {award.tier} ·
-                        flags {award.flags} · start {award.startState ?? "—"} ·{" "}
-                        {award.totalCount} presentations
-                      </span>
-                    </button>
-
-                    {open && !isEmpty && (
-                      <div className="reelstop-list">
-                        {shown.map((rs, i) => {
-                          const text = `[${rs.join(",")}]`;
-                          return (
-                            <div key={i} className="reelstop">
-                              <span className="reelstop-vals">{text}</span>
-                              <button
-                                type="button"
-                                className="reelstop-btn reelstop-apply"
-                                onClick={() => apply(rs, text)}
-                                title="Use in gaffe result"
-                              >
-                                {applied === text ? "✓" : "+"}
-                              </button>
-                              <button
-                                type="button"
-                                className="reelstop-btn"
-                                onClick={() => copy(text)}
-                                title="Copy reelStops"
-                              >
-                                {copied === text ? "✓" : "copy"}
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                      </button>
+                      {open && (
+                        <AwardResults
+                          results={sec.awards}
+                          pattern={pattern}
+                          showFacade={searchAll}
+                          onApply={onApply}
+                          emptyText={`No award with Amount = ${sec.amount.toLocaleString()}${
+                            searchAll ? " in any facade." : " in this facade."
+                          }`}
+                        />
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            ) : (
+              <AwardResults
+                results={sections[0]?.awards ?? []}
+                pattern={pattern}
+                showFacade={searchAll}
+                onApply={onApply}
+                emptyText={`No award with Amount = ${totalPayout.toLocaleString()}${
+                  searchAll ? " in any facade." : " in this facade."
+                }`}
+              />
+            ))}
         </>
       )}
     </div>

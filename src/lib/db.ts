@@ -7,6 +7,7 @@
 
 import * as SQLite from "wa-sqlite";
 import { Base } from "wa-sqlite/src/VFS.js";
+import { matchesPattern } from "./reelstop";
 
 const {
   SQLITE_OK,
@@ -241,21 +242,4 @@ export async function findMatchingReelStops(
     if (matchesPattern(rs, pattern)) matches.push(rs);
   }
   return matches;
-}
-
-/**
- * True when `rs` satisfies `pattern`: at every index where the pattern has a
- * number, rs must equal it; null entries (and positions beyond the pattern's
- * length) are unconstrained. An empty/all-null pattern matches everything.
- */
-export function matchesPattern(
-  rs: number[],
-  pattern: (number | null)[]
-): boolean {
-  for (let i = 0; i < pattern.length; i++) {
-    const want = pattern[i];
-    if (want == null) continue;
-    if (rs[i] !== want) return false;
-  }
-  return true;
 }

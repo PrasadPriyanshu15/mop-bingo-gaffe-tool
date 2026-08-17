@@ -10,7 +10,9 @@ import SelectionSummary, {
   type SelectedRow,
 } from "@/components/SelectionSummary";
 import GaffeResult from "@/components/GaffeResult";
-import ReelStopFinder from "@/components/ReelStopFinder";
+import ReelStopFinder, { type Win } from "@/components/ReelStopFinder";
+import DbAmountSearch from "@/components/DbAmountSearch";
+import type { DbHandle, Facade } from "@/lib/db";
 import { containedPatterns } from "@/lib/patterns";
 import { buildBallCalls, patternDaubNumbers, type Daub } from "@/lib/gaffe";
 import { SAMPLE_GAFFE } from "@/lib/sample";
@@ -29,6 +31,10 @@ export default function Home() {
   const [reelStops, setReelStops] = useState<number[]>(
     SAMPLE_GAFFE.reelStops ?? []
   );
+  // The opened outcomes DB, hoisted so the left-column custom search can query
+  // the same handle the finder opened.
+  const [dbHandle, setDbHandle] = useState<DbHandle | null>(null);
+  const [dbFacades, setDbFacades] = useState<Facade[]>([]);
 
   const paytable = useMemo(
     () => data?.paytables.find((p) => p.facadeKey === betKey) ?? null,
@@ -119,6 +125,18 @@ export default function Home() {
     [effectiveRows]
   );
 
+  // One "win" per selected payout row — lets the DB finder look up each win's
+  // payout separately instead of only the summed total.
+  const wins = useMemo<Win[]>(
+    () =>
+      effectiveRows.map((r) => ({
+        key: r.key,
+        label: `${r.patternName} · ${r.ballQty} balls (${r.payout.toLocaleString()})`,
+        payout: r.payout,
+      })),
+    [effectiveRows]
+  );
+
   // Forced daubs = union across selected patterns. Each carries q = the pattern's
   // selected ball qty (threshold); a shared daub takes the strictest (min) q.
   const daubs = useMemo<Daub[]>(() => {
@@ -183,6 +201,14 @@ export default function Home() {
               onSelect={setPatternId}
             />
           )}
+
+          {dbHandle && (
+            <DbAmountSearch
+              handle={dbHandle}
+              facades={dbFacades}
+              onApply={setReelStops}
+            />
+          )}
         </section>
 
         <section className="col-main" role="main">
@@ -235,7 +261,15 @@ export default function Home() {
           )}
 
           {canPick && (
-            <ReelStopFinder totalPayout={totalPayout} onApply={setReelStops} />
+            <ReelStopFinder
+              totalPayout={totalPayout}
+              wins={wins}
+              onApply={setReelStops}
+              onDbReady={(h, f) => {
+                setDbHandle(h);
+                setDbFacades(f);
+              }}
+            />
           )}
         </section>
 
