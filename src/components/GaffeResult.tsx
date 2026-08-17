@@ -108,16 +108,6 @@ export default function GaffeResult({
           ))}
         </div>
       </div>
-
-      <div className="result-field">
-        <div className="result-key result-key-row">
-          <span>result (JSON)</span>
-          <button type="button" className="btn btn-small" onClick={copy}>
-            {copied ? "Copied!" : "Copy"}
-          </button>
-        </div>
-        <pre className="result-json">{rawJson}</pre>
-      </div>
     </div>
   );
 }

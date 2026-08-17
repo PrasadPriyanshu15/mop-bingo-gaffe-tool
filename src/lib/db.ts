@@ -166,6 +166,39 @@ export async function findFacadesWithAmount(
   return rows.map((r: any[]) => Number(r[0]));
 }
 
+/**
+ * Distinct award amounts, optionally scoped to a facade and/or an inclusive
+ * [lo, hi] amount range. Used by the custom search to list which amounts exist
+ * (e.g. everything in 500–1000) before drilling in.
+ */
+export async function listAmounts(
+  h: DbHandle,
+  facadeId: number | null,
+  lo: number | null,
+  hi: number | null
+): Promise<number[]> {
+  const where: string[] = [];
+  const params: any[] = [];
+  if (facadeId != null) {
+    where.push("FacadeId=?");
+    params.push(facadeId);
+  }
+  if (lo != null) {
+    where.push("Amount>=?");
+    params.push(lo);
+  }
+  if (hi != null) {
+    where.push("Amount<=?");
+    params.push(hi);
+  }
+  const sql =
+    "SELECT DISTINCT Amount FROM Award" +
+    (where.length ? " WHERE " + where.join(" AND ") : "") +
+    " ORDER BY Amount";
+  const { rows } = await h.sqlite3.execWithParams(h.db, sql, params);
+  return rows.map((r: any[]) => Number(r[0]));
+}
+
 export async function findAwardsByAmount(
   h: DbHandle,
   facadeId: number,

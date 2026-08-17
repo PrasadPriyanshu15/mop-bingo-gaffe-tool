@@ -12,6 +12,8 @@ import SelectionSummary, {
 import GaffeResult from "@/components/GaffeResult";
 import ReelStopFinder, { type Win } from "@/components/ReelStopFinder";
 import DbAmountSearch from "@/components/DbAmountSearch";
+import ReelStripViewer from "@/components/ReelStripViewer";
+import ResultJson from "@/components/ResultJson";
 import type { DbHandle, Facade } from "@/lib/db";
 import { containedPatterns } from "@/lib/patterns";
 import { buildBallCalls, patternDaubNumbers, type Daub } from "@/lib/gaffe";
@@ -163,6 +165,16 @@ export default function Home() {
     [daubs]
   );
 
+  const gaffeJson = useMemo(
+    () =>
+      JSON.stringify({
+        reelStops,
+        bingoCard: SAMPLE_GAFFE.bingoCard,
+        ballCalls: builtBallCalls.calls,
+      }),
+    [reelStops, builtBallCalls]
+  );
+
   const forcedNames = useMemo(
     () => Array.from(thresholds.keys()).map(patternName),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -201,6 +213,8 @@ export default function Home() {
               onSelect={setPatternId}
             />
           )}
+
+          {dbHandle && <ReelStripViewer />}
 
           {dbHandle && (
             <DbAmountSearch
@@ -275,6 +289,8 @@ export default function Home() {
 
         {canPick && (
           <section className="col-result">
+            <ResultJson json={gaffeJson} />
+
             <SelectionSummary
               rows={effectiveRows}
               onRemove={clearPattern}

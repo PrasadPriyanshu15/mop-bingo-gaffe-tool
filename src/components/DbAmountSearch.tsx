@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { DbHandle, Facade } from "@/lib/db";
 import { parsePattern, patternIsActive } from "@/lib/reelstop";
 import AwardResults, { type AwardResult } from "./AwardResults";
@@ -12,10 +12,47 @@ interface Props {
   onApply: (reelStops: number[]) => void;
 }
 
+/** What the Amount field resolves to. */
+type AmountInput =
+  | { kind: "none" }
+  | { kind: "single"; v: number }
+  | { kind: "range"; lo: number; hi: number }
+  | { kind: "invalid" };
+
+function parseAmountInput(s: string): AmountInput {
+  const t = s.trim();
+  if (t === "") return { kind: "none" };
+  const m = t.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/);
+  if (m) {
+    let lo = Number(m[1]);
+    let hi = Number(m[2]);
+    if (lo > hi) [lo, hi] = [hi, lo];
+    return { kind: "range", lo, hi };
+  }
+  const n = Number(t);
+  if (Number.isNaN(n)) return { kind: "invalid" };
+  return { kind: "single", v: n };
+}
+
+/** One amount with the awards whose reelStops matched the filter. */
+interface AmountGroup {
+  amount: number;
+  awards: AwardResult[];
+}
+
+type View =
+  | { mode: "awards"; awards: AwardResult[]; amount: number }
+  | { mode: "amountList"; amounts: number[]; lo: number; hi: number }
+  | { mode: "groups"; groups: AmountGroup[]; ranged: boolean };
+
 /**
- * Free-form DB lookup: search any custom Amount across the whole database (one
- * facade or all), with the same positional reelStop filter. Independent of the
- * tool's computed total payout. Collapsible; only shown once a .db is loaded.
+ * Free-form DB lookup, independent of the tool's computed payout:
+ *  • single amount (e.g. 500) — award cards, with optional positional filter;
+ *  • range (e.g. 500-1000) — the amounts that exist in that range;
+ *  • range + filter — only the in-range amounts that have a matching reelStop,
+ *    each with its matches;
+ *  • filter only (no amount) — every amount in the DB with a matching reelStop.
+ * Collapsible; only shown once a .db is loaded.
  */
 export default function DbAmountSearch({ handle, facades, onApply }: Props) {
   const [open, setOpen] = useState(false);
@@ -24,42 +61,129 @@ export default function DbAmountSearch({ handle, facades, onApply }: Props) {
   const [pattern, setPattern] = useState("");
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<AwardResult[] | null>(null);
+  const [view, setView] = useState<View | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(
+    null
+  );
+  const [openAmounts, setOpenAmounts] = useState<Set<number>>(new Set());
 
-  async function find() {
-    const amt = Number(amount.trim());
-    if (amount.trim() === "" || Number.isNaN(amt)) {
-      setError("Enter a numeric amount to search.");
+  // Increments on every new search / cancel; a running loop bails out as soon
+  // as it sees its id is stale, so long scans can be interrupted.
+  const runIdRef = useRef(0);
+
+  const showFacade = facadeSel === "all";
+
+  async function runSearch(amountStr: string, patternStr: string) {
+    const amt = parseAmountInput(amountStr);
+    const pat = parsePattern(patternStr);
+    const active = patternIsActive(pat);
+
+    if (amt.kind === "invalid") {
+      setError("Enter a valid amount or range, e.g. 500 or 500-1000.");
       return;
     }
+    if (amt.kind === "none" && !active) {
+      setError("Enter an amount, a range (500-1000), or a reelStop filter.");
+      return;
+    }
+
+    const myId = ++runIdRef.current;
+    const stale = () => runIdRef.current !== myId;
+
     setSearching(true);
     setError(null);
-    setResults(null);
+    setView(null);
+    setProgress(null);
+    setOpenAmounts(new Set());
+
     try {
       const db = await import("@/lib/db");
-      const pat = parsePattern(pattern);
-      const active = patternIsActive(pat);
-      const targets =
-        facadeSel === "all"
-          ? facades
-          : facades.filter((f) => String(f.facadeId) === facadeSel);
+      const targets = showFacade
+        ? facades
+        : facades.filter((f) => String(f.facadeId) === facadeSel);
+      const facadeIdParam = showFacade ? null : Number(facadeSel);
 
-      const out: AwardResult[] = [];
-      for (const facade of targets) {
-        const awards = await db.findAwardsByAmount(handle, facade.facadeId, amt);
-        for (const award of awards) {
-          const reelStops = active
-            ? await db.findMatchingReelStops(handle, award, pat)
-            : await db.getReelStops(handle, award, 8);
-          out.push({ award, facadeKey: facade.facadeKey, reelStops });
+      // Single amount → award cards (unchanged behavior).
+      if (amt.kind === "single") {
+        const awards: AwardResult[] = [];
+        for (const facade of targets) {
+          const found = await db.findAwardsByAmount(handle, facade.facadeId, amt.v);
+          if (stale()) return;
+          for (const award of found) {
+            const reelStops = active
+              ? await db.findMatchingReelStops(handle, award, pat)
+              : await db.getReelStops(handle, award, 8);
+            if (stale()) return;
+            awards.push({ award, facadeKey: facade.facadeKey, reelStops });
+          }
         }
+        setView({ mode: "awards", awards, amount: amt.v });
+        return;
       }
-      setResults(out);
+
+      // Range, no filter → just the amounts present in that range.
+      if (amt.kind === "range" && !active) {
+        const amounts = await db.listAmounts(
+          handle,
+          facadeIdParam,
+          amt.lo,
+          amt.hi
+        );
+        if (stale()) return;
+        setView({ mode: "amountList", amounts, lo: amt.lo, hi: amt.hi });
+        return;
+      }
+
+      // Filter present (range+filter, or filter-only) → for each candidate
+      // amount, keep the awards whose reelStops match, scanning per amount.
+      const lo = amt.kind === "range" ? amt.lo : null;
+      const hi = amt.kind === "range" ? amt.hi : null;
+      const amounts = await db.listAmounts(handle, facadeIdParam, lo, hi);
+      if (stale()) return;
+      setProgress({ done: 0, total: amounts.length });
+
+      const groups: AmountGroup[] = [];
+      for (let i = 0; i < amounts.length; i++) {
+        const a = amounts[i];
+        const matched: AwardResult[] = [];
+        for (const facade of targets) {
+          const found = await db.findAwardsByAmount(handle, facade.facadeId, a);
+          if (stale()) return;
+          for (const award of found) {
+            const rs = await db.findMatchingReelStops(handle, award, pat);
+            if (stale()) return;
+            if (rs.length > 0) {
+              matched.push({ award, facadeKey: facade.facadeKey, reelStops: rs });
+            }
+          }
+        }
+        if (matched.length > 0) groups.push({ amount: a, awards: matched });
+        setProgress({ done: i + 1, total: amounts.length });
+      }
+      setView({ mode: "groups", groups, ranged: amt.kind === "range" });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Query failed.");
+      if (!stale()) setError(e instanceof Error ? e.message : "Query failed.");
     } finally {
-      setSearching(false);
+      if (!stale()) {
+        setSearching(false);
+        setProgress(null);
+      }
     }
+  }
+
+  function cancel() {
+    runIdRef.current++;
+    setSearching(false);
+    setProgress(null);
+  }
+
+  function toggleAmount(a: number) {
+    setOpenAmounts((prev) => {
+      const next = new Set(prev);
+      if (next.has(a)) next.delete(a);
+      else next.add(a);
+      return next;
+    });
   }
 
   return (
@@ -71,7 +195,7 @@ export default function DbAmountSearch({ handle, facades, onApply }: Props) {
         aria-expanded={open}
       >
         <span>{open ? "▾" : "▸"} DB amount search</span>
-        <span className="muted small">any amount</span>
+        <span className="muted small">amount · range · filter</span>
       </button>
 
       {open && (
@@ -93,15 +217,15 @@ export default function DbAmountSearch({ handle, facades, onApply }: Props) {
           </label>
 
           <label className="db-field">
-            <span className="db-label">Amount</span>
+            <span className="db-label">Amount or range</span>
             <input
               className="select"
-              type="number"
+              type="text"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="e.g. 500"
+              placeholder="e.g. 500 or 500-1000"
               onKeyDown={(e) => {
-                if (e.key === "Enter") void find();
+                if (e.key === "Enter") void runSearch(amount, pattern);
               }}
             />
           </label>
@@ -116,31 +240,126 @@ export default function DbAmountSearch({ handle, facades, onApply }: Props) {
               value={pattern}
               onChange={(e) => setPattern(e.target.value)}
               placeholder="e.g. ,,,,,,,,2"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void runSearch(amount, pattern);
+              }}
             />
           </label>
 
-          <button
-            type="button"
-            className="btn"
-            onClick={find}
-            disabled={searching}
-          >
-            {searching ? "Searching…" : "Search DB"}
-          </button>
+          <p className="muted small">
+            Leave the amount blank and type a filter to find every amount that
+            has it (slower — pair with a range to narrow the scan).
+          </p>
+
+          <div className="amount-actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void runSearch(amount, pattern)}
+              disabled={searching}
+            >
+              {searching ? "Searching…" : "Search DB"}
+            </button>
+            {searching && (
+              <button type="button" className="btn btn-small" onClick={cancel}>
+                Cancel
+              </button>
+            )}
+          </div>
+
+          {progress && (
+            <p className="muted small">
+              Scanned {progress.done} / {progress.total} amounts…
+            </p>
+          )}
 
           {error && <p className="error">{error}</p>}
 
-          {results && (
+          {view?.mode === "awards" && (
             <AwardResults
-              results={results}
+              results={view.awards}
               pattern={pattern}
-              showFacade={facadeSel === "all"}
+              showFacade={showFacade}
               onApply={onApply}
-              emptyText={`No award with Amount = ${Number(
-                amount
-              ).toLocaleString()} found.`}
+              emptyText={`No award with Amount = ${view.amount.toLocaleString()} found.`}
             />
           )}
+
+          {view?.mode === "amountList" &&
+            (view.amounts.length === 0 ? (
+              <p className="muted small">
+                No amounts between {view.lo.toLocaleString()} and{" "}
+                {view.hi.toLocaleString()}.
+              </p>
+            ) : (
+              <>
+                <p className="muted small">
+                  {view.amounts.length} amount
+                  {view.amounts.length === 1 ? "" : "s"} in{" "}
+                  {view.lo.toLocaleString()}–{view.hi.toLocaleString()} (click to
+                  open):
+                </p>
+                <div className="amount-list">
+                  {view.amounts.map((a) => (
+                    <button
+                      key={a}
+                      type="button"
+                      className="amount-chip"
+                      onClick={() => {
+                        setAmount(String(a));
+                        void runSearch(String(a), pattern);
+                      }}
+                    >
+                      {a.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ))}
+
+          {view?.mode === "groups" &&
+            (view.groups.length === 0 ? (
+              <p className="muted small">
+                No amounts {view.ranged ? "in that range " : ""}have a reelStop
+                matching this filter.
+              </p>
+            ) : (
+              <div className="win-sections">
+                {view.groups.map((g) => {
+                  const isOpen = openAmounts.has(g.amount);
+                  return (
+                    <section key={g.amount} className="win-section">
+                      <button
+                        type="button"
+                        className="win-section-head"
+                        aria-expanded={isOpen}
+                        onClick={() => toggleAmount(g.amount)}
+                      >
+                        <span className="win-section-caret">
+                          {isOpen ? "▾" : "▸"}
+                        </span>
+                        <span className="win-section-label">
+                          Amount {g.amount.toLocaleString()}
+                        </span>
+                        <span className="award-badge">
+                          {g.awards.length} award
+                          {g.awards.length === 1 ? "" : "s"}
+                        </span>
+                      </button>
+                      {isOpen && (
+                        <AwardResults
+                          results={g.awards}
+                          pattern={pattern}
+                          showFacade={showFacade}
+                          onApply={onApply}
+                          emptyText="No matching reelStops."
+                        />
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            ))}
         </div>
       )}
     </div>

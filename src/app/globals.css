@@ -659,6 +659,104 @@ body {
   gap: 10px;
   margin-top: 14px;
 }
+.amount-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.amount-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.amount-chip {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  color: var(--marked);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 12.5px;
+}
+.amount-chip:hover {
+  border-color: var(--accent);
+}
+
+/* reelStrip slot viewer */
+.reelstrip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.reelstrip-rows {
+  width: 72px;
+}
+.reelstrip-scroll {
+  overflow-x: auto;
+}
+.reelstrip-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.reelstrip-head {
+  display: flex;
+}
+.reelstrip-head-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 2px;
+}
+.reel-strips {
+  position: relative;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+.reel-col {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scroll-snap-type: y proximity;
+}
+.reel-col + .reel-col {
+  border-left: 1px solid var(--border);
+}
+.reel-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--border);
+  scroll-snap-align: start;
+  font-size: 11px;
+  padding: 0 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reel-payline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  background: rgba(76, 141, 255, 0.12);
+  pointer-events: none;
+  z-index: 2;
+}
 .db-label {
   font-size: 11.5px;
   color: var(--muted);
