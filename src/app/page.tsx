@@ -92,6 +92,19 @@ export default function Home() {
     });
   }
 
+  /** Prefill section 4 from a DB "create pattern" click: set bet level, select
+   *  the pattern, and threshold it at the matched ballQty (drives payout,
+   *  daubs, ballCalls and the result). */
+  function createPatternFromMatch(
+    facadeKey: string,
+    pid: number,
+    ballQty: number
+  ) {
+    setBetKey(facadeKey);
+    setPatternId(pid);
+    setThresholds(new Map([[pid, ballQty]]));
+  }
+
   function clearPattern(pid: number) {
     setThresholds((prev) => {
       const next = new Map(prev);
@@ -220,7 +233,9 @@ export default function Home() {
             <DbAmountSearch
               handle={dbHandle}
               facades={dbFacades}
+              data={data}
               onApply={setReelStops}
+              onCreatePattern={createPatternFromMatch}
             />
           )}
         </section>

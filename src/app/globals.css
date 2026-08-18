@@ -683,6 +683,53 @@ body {
 .amount-chip:hover {
   border-color: var(--accent);
 }
+.btn-alt {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-alt:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pattern-matches {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pattern-matches-head {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--marked);
+}
+.pattern-match {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.pattern-match-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pattern-match-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.pattern-match-meta {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 
 /* reelStrip slot viewer */
 .reelstrip {

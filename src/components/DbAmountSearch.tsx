@@ -2,14 +2,32 @@
 
 import { useRef, useState } from "react";
 import type { DbHandle, Facade } from "@/lib/db";
+import type { Paytable59 } from "@/lib/types";
 import { parsePattern, patternIsActive } from "@/lib/reelstop";
 import AwardResults, { type AwardResult } from "./AwardResults";
 
 interface Props {
   handle: DbHandle;
   facades: Facade[];
+  /** Parsed paytable XML — used to find which patterns pay a given amount. */
+  data: Paytable59 | null;
   /** Push a chosen reelStop candidate into the main generated gaffe output. */
   onApply: (reelStops: number[]) => void;
+  /** Prefill section 4 by selecting this pattern/ballQty at this bet line. */
+  onCreatePattern: (
+    facadeKey: string,
+    patternId: number,
+    ballQty: number
+  ) => void;
+}
+
+/** A single pattern payout that equals the searched amount. */
+interface PatternMatch {
+  facadeKey: string;
+  patternId: number;
+  patternName: string;
+  ballQty: number;
+  payout: number;
 }
 
 /** What the Amount field resolves to. */
@@ -54,7 +72,13 @@ type View =
  *  • filter only (no amount) — every amount in the DB with a matching reelStop.
  * Collapsible; only shown once a .db is loaded.
  */
-export default function DbAmountSearch({ handle, facades, onApply }: Props) {
+export default function DbAmountSearch({
+  handle,
+  facades,
+  data,
+  onApply,
+  onCreatePattern,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [facadeSel, setFacadeSel] = useState<string>("all");
   const [amount, setAmount] = useState("");
@@ -66,6 +90,10 @@ export default function DbAmountSearch({ handle, facades, onApply }: Props) {
     null
   );
   const [openAmounts, setOpenAmounts] = useState<Set<number>>(new Set());
+  // Patterns whose payout equals the entered amount (from "see patterns").
+  const [patternMatches, setPatternMatches] = useState<
+    { amount: number; matches: PatternMatch[] } | null
+  >(null);
 
   // Increments on every new search / cancel; a running loop bails out as soon
   // as it sees its id is stale, so long scans can be interrupted.
@@ -95,6 +123,7 @@ export default function DbAmountSearch({ handle, facades, onApply }: Props) {
     setView(null);
     setProgress(null);
     setOpenAmounts(new Set());
+    setPatternMatches(null);
 
     try {
       const db = await import("@/lib/db");
@@ -177,6 +206,49 @@ export default function DbAmountSearch({ handle, facades, onApply }: Props) {
     setProgress(null);
   }
 
+  const amtParsed = parseAmountInput(amount);
+  const canSeePatterns = amtParsed.kind === "single" && !!data;
+
+  /** List single patterns whose payout equals the entered amount. */
+  function seePatterns() {
+    if (amtParsed.kind !== "single") {
+      setError("Enter a single amount to see patterns.");
+      return;
+    }
+    if (!data) {
+      setError("Load the paytable XML first to see patterns.");
+      return;
+    }
+    setError(null);
+    const target = amtParsed.v;
+    // A specific bet line → just that paytable; "all" → every bet level.
+    const selKey = facades.find(
+      (f) => String(f.facadeId) === facadeSel
+    )?.facadeKey;
+    const tables = showFacade
+      ? data.paytables
+      : data.paytables.filter((p) => p.facadeKey === selKey);
+
+    const matches: PatternMatch[] = [];
+    for (const pt of tables) {
+      for (const e of pt.entries) {
+        if (e.payout === target) {
+          matches.push({
+            facadeKey: pt.facadeKey,
+            patternId: e.patternId,
+            patternName:
+              data.patterns.find((p) => p.id === e.patternId)?.name ??
+              `#${e.patternId}`,
+            ballQty: e.ballQty,
+            payout: e.payout,
+          });
+        }
+      }
+    }
+    matches.sort((a, b) => a.ballQty - b.ballQty);
+    setPatternMatches({ amount: target, matches });
+  }
+
   function toggleAmount(a: number) {
     setOpenAmounts((prev) => {
       const next = new Set(prev);
@@ -222,7 +294,10 @@ export default function DbAmountSearch({ handle, facades, onApply }: Props) {
               className="select"
               type="text"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => {
+                setAmount(e.target.value);
+                setPatternMatches(null);
+              }}
               placeholder="e.g. 500 or 500-1000"
               onKeyDown={(e) => {
                 if (e.key === "Enter") void runSearch(amount, pattern);
@@ -260,12 +335,66 @@ export default function DbAmountSearch({ handle, facades, onApply }: Props) {
             >
               {searching ? "Searching…" : "Search DB"}
             </button>
+            <button
+              type="button"
+              className="btn btn-alt"
+              onClick={seePatterns}
+              disabled={!canSeePatterns || searching}
+              title={
+                canSeePatterns
+                  ? "Find single patterns that pay this amount"
+                  : "Enter a single amount (and load the paytable XML)"
+              }
+            >
+              see patterns
+            </button>
             {searching && (
               <button type="button" className="btn btn-small" onClick={cancel}>
                 Cancel
               </button>
             )}
           </div>
+
+          {patternMatches &&
+            (patternMatches.matches.length === 0 ? (
+              <p className="muted small">
+                No single pattern pays exactly{" "}
+                {patternMatches.amount.toLocaleString()}
+                {showFacade ? "." : " at this bet line."}
+              </p>
+            ) : (
+              <div className="pattern-matches">
+                <div className="pattern-matches-head">
+                  {patternMatches.matches.length} pattern
+                  {patternMatches.matches.length === 1 ? "" : "s"} pay{" "}
+                  {patternMatches.amount.toLocaleString()}
+                </div>
+                {patternMatches.matches.map((m, i) => (
+                  <div key={i} className="pattern-match">
+                    <div className="pattern-match-info">
+                      <span className="pattern-match-name">
+                        {m.patternName}{" "}
+                        <span className="pattern-id">#{m.patternId}</span>
+                      </span>
+                      <span className="pattern-match-meta">
+                        {showFacade ? `${m.facadeKey} · ` : ""}
+                        {m.ballQty} balls · {m.payout.toLocaleString()}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      onClick={() =>
+                        onCreatePattern(m.facadeKey, m.patternId, m.ballQty)
+                      }
+                      title="Select this pattern in section 4 (fills payout, ballCalls & result)"
+                    >
+                      create pattern
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ))}
 
           {progress && (
             <p className="muted small">
