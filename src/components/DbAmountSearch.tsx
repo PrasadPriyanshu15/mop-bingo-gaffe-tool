@@ -1,10 +1,20 @@
 "use client";
 
-import { useRef, useState } from "react";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import type { DbHandle, Facade } from "@/lib/db";
-import type { Paytable59 } from "@/lib/types";
+import type { MatchingPattern, Paytable59 } from "@/lib/types";
 import { parsePattern, patternIsActive } from "@/lib/reelstop";
 import AwardResults, { type AwardResult } from "./AwardResults";
+
+export interface DbAmountSearchHandle {
+  /** Open the panel, set the reelStop filter, and run the search. */
+  runWithFilter: (filter: string) => void;
+}
 
 interface Props {
   handle: DbHandle;
@@ -19,15 +29,25 @@ interface Props {
     patternId: number,
     ballQty: number
   ) => void;
+  /** Load a reelStop into the reelStrip viewer. */
+  onSlot: (reelStops: number[]) => void;
+  /** Whether a reelStrip .xml is loaded (enables the "slot" button). */
+  reelStripLoaded: boolean;
 }
 
-/** A single pattern payout that equals the searched amount. */
+/** A pattern threshold whose cumulative total equals the searched amount. */
 interface PatternMatch {
   facadeKey: string;
   patternId: number;
   patternName: string;
+  /** The ball call (threshold) that starts the cascade. */
   ballQty: number;
+  /** This threshold row's own payout. */
   payout: number;
+  /** Cumulative total = this row + all higher-ballQty (auto) rows (== amount). */
+  total: number;
+  /** How many higher-ballQty rows are auto-included on top of this one. */
+  autoCount: number;
 }
 
 /** What the Amount field resolves to. */
@@ -72,13 +92,12 @@ type View =
  *  • filter only (no amount) — every amount in the DB with a matching reelStop.
  * Collapsible; only shown once a .db is loaded.
  */
-export default function DbAmountSearch({
-  handle,
-  facades,
-  data,
-  onApply,
-  onCreatePattern,
-}: Props) {
+const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
+  function DbAmountSearch(
+    { handle, facades, data, onApply, onCreatePattern, onSlot, reelStripLoaded },
+    ref
+  ) {
+  const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [facadeSel, setFacadeSel] = useState<string>("all");
   const [amount, setAmount] = useState("");
@@ -90,9 +109,10 @@ export default function DbAmountSearch({
     null
   );
   const [openAmounts, setOpenAmounts] = useState<Set<number>>(new Set());
-  // Patterns whose payout equals the entered amount (from "see patterns").
+  // Patterns whose total lands on the entered amount, or inside the entered
+  // range (from "see patterns"). lo === hi means a single amount was entered.
   const [patternMatches, setPatternMatches] = useState<
-    { amount: number; matches: PatternMatch[] } | null
+    { lo: number; hi: number; matches: PatternMatch[] } | null
   >(null);
 
   // Increments on every new search / cancel; a running loop bails out as soon
@@ -207,12 +227,22 @@ export default function DbAmountSearch({
   }
 
   const amtParsed = parseAmountInput(amount);
-  const canSeePatterns = amtParsed.kind === "single" && !!data;
+  const canSeePatterns =
+    (amtParsed.kind === "single" || amtParsed.kind === "range") && !!data;
 
-  /** List single patterns whose payout equals the entered amount. */
+  /** List patterns whose total equals the entered amount, or falls inside the
+   *  entered range, at the selected bet line(s). */
   function seePatterns() {
-    if (amtParsed.kind !== "single") {
-      setError("Enter a single amount to see patterns.");
+    // Resolve the entered amount/range into an inclusive [lo, hi] window.
+    let lo: number;
+    let hi: number;
+    if (amtParsed.kind === "single") {
+      lo = hi = amtParsed.v;
+    } else if (amtParsed.kind === "range") {
+      lo = amtParsed.lo;
+      hi = amtParsed.hi;
+    } else {
+      setError("Enter an amount or a range (e.g. 500 or 500-1000) to see patterns.");
       return;
     }
     if (!data) {
@@ -220,7 +250,6 @@ export default function DbAmountSearch({
       return;
     }
     setError(null);
-    const target = amtParsed.v;
     // A specific bet line → just that paytable; "all" → every bet level.
     const selKey = facades.find(
       (f) => String(f.facadeId) === facadeSel
@@ -231,22 +260,44 @@ export default function DbAmountSearch({
 
     const matches: PatternMatch[] = [];
     for (const pt of tables) {
+      // Group this bet level's rows by pattern.
+      const byPattern = new Map<number, MatchingPattern[]>();
       for (const e of pt.entries) {
-        if (e.payout === target) {
-          matches.push({
-            facadeKey: pt.facadeKey,
-            patternId: e.patternId,
-            patternName:
-              data.patterns.find((p) => p.id === e.patternId)?.name ??
-              `#${e.patternId}`,
-            ballQty: e.ballQty,
-            payout: e.payout,
-          });
+        const arr = byPattern.get(e.patternId);
+        if (arr) arr.push(e);
+        else byPattern.set(e.patternId, [e]);
+      }
+      for (const [pid, arr] of byPattern) {
+        // Selecting ballQty T selects every row with ballQty >= T, so the total
+        // for threshold at index i is the suffix sum from i (matches the tool's
+        // effectiveRows / totalPayout). Keep the thresholds whose total lands in
+        // [lo, hi].
+        arr.sort((a, b) => a.ballQty - b.ballQty);
+        let suffix = 0;
+        const suffixSums = new Array<number>(arr.length);
+        for (let i = arr.length - 1; i >= 0; i--) {
+          suffix += arr[i].payout;
+          suffixSums[i] = suffix;
+        }
+        for (let i = 0; i < arr.length; i++) {
+          if (suffixSums[i] >= lo && suffixSums[i] <= hi) {
+            matches.push({
+              facadeKey: pt.facadeKey,
+              patternId: pid,
+              patternName:
+                data.patterns.find((p) => p.id === pid)?.name ?? `#${pid}`,
+              ballQty: arr[i].ballQty,
+              payout: arr[i].payout,
+              total: suffixSums[i],
+              autoCount: arr.length - 1 - i,
+            });
+          }
         }
       }
     }
-    matches.sort((a, b) => a.ballQty - b.ballQty);
-    setPatternMatches({ amount: target, matches });
+    // Total ascending (then ball call) so a range reads low → high.
+    matches.sort((a, b) => a.total - b.total || a.ballQty - b.ballQty);
+    setPatternMatches({ lo, hi, matches });
   }
 
   function toggleAmount(a: number) {
@@ -258,8 +309,20 @@ export default function DbAmountSearch({
     });
   }
 
+  // Driven by the reelStrip viewer's SEARCH button: fill the filter and run.
+  useImperativeHandle(ref, () => ({
+    runWithFilter(filter: string) {
+      setOpen(true);
+      setPattern(filter);
+      void runSearch(amount, filter);
+      requestAnimationFrame(() =>
+        panelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+      );
+    },
+  }));
+
   return (
-    <div className="panel">
+    <div className="panel" ref={panelRef}>
       <button
         type="button"
         className="panel-title panel-title-toggle"
@@ -342,8 +405,8 @@ export default function DbAmountSearch({
               disabled={!canSeePatterns || searching}
               title={
                 canSeePatterns
-                  ? "Find single patterns that pay this amount"
-                  : "Enter a single amount (and load the paytable XML)"
+                  ? "Find patterns whose total (incl. auto rows) equals this amount, or falls in this range"
+                  : "Enter an amount or range (and load the paytable XML)"
               }
             >
               see patterns
@@ -356,29 +419,41 @@ export default function DbAmountSearch({
           </div>
 
           {patternMatches &&
-            (patternMatches.matches.length === 0 ? (
-              <p className="muted small">
-                No single pattern pays exactly{" "}
-                {patternMatches.amount.toLocaleString()}
-                {showFacade ? "." : " at this bet line."}
-              </p>
-            ) : (
-              <div className="pattern-matches">
-                <div className="pattern-matches-head">
-                  {patternMatches.matches.length} pattern
-                  {patternMatches.matches.length === 1 ? "" : "s"} pay{" "}
-                  {patternMatches.amount.toLocaleString()}
-                </div>
+            (() => {
+              const { lo, hi } = patternMatches;
+              const ranged = lo !== hi;
+              const amtLabel = ranged
+                ? `${lo.toLocaleString()}–${hi.toLocaleString()}`
+                : lo.toLocaleString();
+              return patternMatches.matches.length === 0 ? (
+                <p className="muted small">
+                  No pattern totals {ranged ? "fall in" : "exactly"} {amtLabel}
+                  {showFacade ? "." : " at this bet line."}
+                </p>
+              ) : (
+                <div className="pattern-matches">
+                  <div className="pattern-matches-head">
+                    {patternMatches.matches.length} pattern
+                    {patternMatches.matches.length === 1 ? "" : "s"} total{" "}
+                    {ranged ? "in " : ""}
+                    {amtLabel}
+                  </div>
                 {patternMatches.matches.map((m, i) => (
                   <div key={i} className="pattern-match">
                     <div className="pattern-match-info">
                       <span className="pattern-match-name">
                         {m.patternName}{" "}
                         <span className="pattern-id">#{m.patternId}</span>
+                        <span className="pattern-match-amount">
+                          {m.total.toLocaleString()}
+                        </span>
                       </span>
                       <span className="pattern-match-meta">
                         {showFacade ? `${m.facadeKey} · ` : ""}
-                        {m.ballQty} balls · {m.payout.toLocaleString()}
+                        ball call {m.ballQty}
+                        {m.autoCount > 0
+                          ? ` · ${m.payout.toLocaleString()} + ${m.autoCount} auto`
+                          : ""}
                       </span>
                     </div>
                     <button
@@ -393,8 +468,9 @@ export default function DbAmountSearch({
                     </button>
                   </div>
                 ))}
-              </div>
-            ))}
+                </div>
+              );
+            })()}
 
           {progress && (
             <p className="muted small">
@@ -410,6 +486,9 @@ export default function DbAmountSearch({
               pattern={pattern}
               showFacade={showFacade}
               onApply={onApply}
+              onSlot={onSlot}
+              reelStripLoaded={reelStripLoaded}
+              hideEmpty
               emptyText={`No award with Amount = ${view.amount.toLocaleString()} found.`}
             />
           )}
@@ -481,6 +560,9 @@ export default function DbAmountSearch({
                           pattern={pattern}
                           showFacade={showFacade}
                           onApply={onApply}
+                          onSlot={onSlot}
+                          reelStripLoaded={reelStripLoaded}
+                          hideEmpty
                           emptyText="No matching reelStops."
                         />
                       )}
@@ -493,4 +575,7 @@ export default function DbAmountSearch({
       )}
     </div>
   );
-}
+  }
+);
+
+export default DbAmountSearch;

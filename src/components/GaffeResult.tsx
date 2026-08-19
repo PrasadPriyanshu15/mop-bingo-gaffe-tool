@@ -55,6 +55,27 @@ export default function GaffeResult({
         </p>
       )}
 
+      {built.infeasible.length > 0 && (
+        <div className="result-warn">
+          <strong>
+            ⚠ {built.infeasible.length} number(s) can&apos;t be called within
+            their pattern&apos;s ball quantity:
+          </strong>
+          <ul>
+            {built.infeasible.map((p) => (
+              <li key={p.value}>
+                {p.patternName ?? "Pattern"} needs <strong>{p.value}</strong>{" "}
+                within {p.q} balls, but it lands at ball {p.position}.
+              </li>
+            ))}
+          </ul>
+          <span className="muted">
+            Too many forced numbers share the early draws — lower a ball qty or
+            deselect a contained pattern.
+          </span>
+        </div>
+      )}
+
       <div className="result-field">
         <span className="result-key">reelStops</span>
         <code className="result-val">[{reelStops.join(", ")}]</code>
@@ -98,8 +119,14 @@ export default function GaffeResult({
                 const v = built.columns[c][r];
                 if (v == null) return <span key={c} className="bcall empty" />;
                 const daub = built.daubSet.has(v);
+                const bad = built.infeasible.some((p) => p.value === v);
                 return (
-                  <span key={c} className={"bcall" + (daub ? " inserted" : "")}>
+                  <span
+                    key={c}
+                    className={
+                      "bcall" + (daub ? " inserted" : "") + (bad ? " bad" : "")
+                    }
+                  >
                     {v}
                   </span>
                 );

@@ -20,6 +20,10 @@ interface Props {
   onApply: (reelStops: number[]) => void;
   /** Report the opened DB handle upward so other panels can query it. */
   onDbReady: (handle: DbHandle | null, facades: Facade[]) => void;
+  /** Load a reelStop into the reelStrip viewer. */
+  onSlot: (reelStops: number[]) => void;
+  /** Whether a reelStrip .xml is loaded (enables the "slot" button). */
+  reelStripLoaded: boolean;
 }
 
 /** One amount searched, with its matching awards (across the target facades). */
@@ -41,6 +45,8 @@ export default function ReelStopFinder({
   wins,
   onApply,
   onDbReady,
+  onSlot,
+  reelStripLoaded,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const handleRef = useRef<DbHandle | null>(null);
@@ -318,6 +324,8 @@ export default function ReelStopFinder({
                           pattern={pattern}
                           showFacade={searchAll}
                           onApply={onApply}
+                          onSlot={onSlot}
+                          reelStripLoaded={reelStripLoaded}
                           emptyText={`No award with Amount = ${sec.amount.toLocaleString()}${
                             searchAll ? " in any facade." : " in this facade."
                           }`}
@@ -333,6 +341,8 @@ export default function ReelStopFinder({
                 pattern={pattern}
                 showFacade={searchAll}
                 onApply={onApply}
+                onSlot={onSlot}
+                reelStripLoaded={reelStripLoaded}
                 emptyText={`No award with Amount = ${totalPayout.toLocaleString()}${
                   searchAll ? " in any facade." : " in this facade."
                 }`}

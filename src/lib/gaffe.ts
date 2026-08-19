@@ -28,17 +28,35 @@ export interface Daub {
   value: number;
   /** Selected ball qty: this number must be daubed by this ball. */
   q: number;
+  /** Pattern whose ball qty is binding on this number (for infeasibility hints). */
+  patternName?: string;
+}
+
+/** Where a forced number ended up in the built draw order. */
+export interface DaubPlacement {
+  value: number;
+  /** Ball qty this number had to be called within. */
+  q: number;
+  /** 1-indexed position in the flat draw order. */
+  position: number;
+  /** True when position <= q (the requirement is met). */
+  ok: boolean;
+  patternName?: string;
 }
 
 export interface BuiltBallCalls {
   /** Flat draw-order sequence (what goes in the gaffe JSON). */
   calls: number[];
-  /** Per-range call order (5 columns) for the aligned display. */
+  /** Per-range call order (5 columns) for the aligned B/I/N/G/O display. */
   columns: number[][];
   /** Number of display rows = longest column. */
   rows: number;
   /** Forced numbers, for highlighting. */
   daubSet: Set<number>;
+  /** Every forced number's placement, ordered by draw position. */
+  placements: DaubPlacement[];
+  /** Placements that could NOT be called within their ball qty (over-constrained). */
+  infeasible: DaubPlacement[];
 }
 
 /**
@@ -50,7 +68,8 @@ export interface BuiltBallCalls {
  * selected ball qty when that position's range holds a daub) and therefore
  * crosses any lower, unselected payout tier. Within a range, tighter `q` daubs
  * are placed first so they still get a valid late slot. Base (non-card) numbers
- * fill the remaining slots ascending.
+ * fill the remaining slots ascending. Each forced number's real flat position is
+ * checked against its `q` and reported as infeasible when it can't fit in time.
  */
 export function buildBallCalls(base: number[], daubs: Daub[]): BuiltBallCalls {
   const daubSet = new Set(daubs.map((d) => d.value));
@@ -104,12 +123,32 @@ export function buildBallCalls(base: number[], daubs: Daub[]): BuiltBallCalls {
 
   const rows = columns.reduce((m, c) => Math.max(m, c.length), 0);
 
+  // Flatten in draw order (row-major over the 5 columns) and record where each
+  // forced number actually landed, so feasibility uses the true ball position.
   const calls: number[] = [];
+  const posByValue = new Map<number, number>();
   for (let i = 0; i < rows; i++) {
     for (let r = 0; r < 5; r++) {
-      if (i < columns[r].length) calls.push(columns[r][i]);
+      if (i < columns[r].length) {
+        calls.push(columns[r][i]);
+        posByValue.set(columns[r][i], calls.length);
+      }
     }
   }
 
-  return { calls, columns, rows, daubSet };
+  const placements: DaubPlacement[] = daubs
+    .map((d) => {
+      const position = posByValue.get(d.value) ?? -1;
+      return {
+        value: d.value,
+        q: d.q,
+        position,
+        ok: position > 0 && position <= d.q,
+        patternName: d.patternName,
+      };
+    })
+    .sort((a, b) => a.position - b.position);
+  const infeasible = placements.filter((p) => !p.ok);
+
+  return { calls, columns, rows, daubSet, placements, infeasible };
 }

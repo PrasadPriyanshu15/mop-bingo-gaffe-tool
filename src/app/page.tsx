@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import XmlUpload from "@/components/XmlUpload";
 import BetLevelSelect from "@/components/BetLevelSelect";
 import PatternSelect from "@/components/PatternSelect";
@@ -8,12 +8,16 @@ import BingoGrid from "@/components/BingoGrid";
 import InstanceList from "@/components/InstanceList";
 import SelectionSummary, {
   type SelectedRow,
-} from "@/components/SelectionSummary";
+} from "@/components/SelectionSummary";                                       
 import GaffeResult from "@/components/GaffeResult";
 import ReelStopFinder, { type Win } from "@/components/ReelStopFinder";
-import DbAmountSearch from "@/components/DbAmountSearch";
-import ReelStripViewer from "@/components/ReelStripViewer";
-import ResultJson from "@/components/ResultJson";
+import DbAmountSearch, {                     
+  type DbAmountSearchHandle,                                         
+} from "@/components/DbAmountSearch";                                                   
+import ReelStripViewer, {
+  type ReelStripHandle,                                     
+} from "@/components/ReelStripViewer";
+import ResultJson from "@/components/ResultJson";                             
 import type { DbHandle, Facade } from "@/lib/db";
 import { containedPatterns } from "@/lib/patterns";
 import { buildBallCalls, patternDaubNumbers, type Daub } from "@/lib/gaffe";
@@ -37,6 +41,10 @@ export default function Home() {
   // the same handle the finder opened.
   const [dbHandle, setDbHandle] = useState<DbHandle | null>(null);
   const [dbFacades, setDbFacades] = useState<Facade[]>([]);
+  // Coordination for the reelStrip viewer <-> result rows <-> DB amount search.
+  const [reelStripLoaded, setReelStripLoaded] = useState(false);
+  const reelStripRef = useRef<ReelStripHandle>(null);
+  const dbSearchRef = useRef<DbAmountSearchHandle>(null);
 
   const paytable = useMemo(
     () => data?.paytables.find((p) => p.facadeKey === betKey) ?? null,
@@ -157,6 +165,7 @@ export default function Home() {
   const daubs = useMemo<Daub[]>(() => {
     if (!data) return [];
     const qByValue = new Map<number, number>();
+    const nameByValue = new Map<number, string>();
     const order: number[] = [];
     for (const [pid, q] of thresholds) {
       const p = data.patterns.find((x) => x.id === pid);
@@ -164,13 +173,20 @@ export default function Home() {
       for (const n of patternDaubNumbers(p, SAMPLE_GAFFE.bingoCard)) {
         if (!qByValue.has(n)) {
           qByValue.set(n, q);
+          nameByValue.set(n, p.name);
           order.push(n);
-        } else {
-          qByValue.set(n, Math.min(qByValue.get(n)!, q));
+        } else if (q < qByValue.get(n)!) {
+          // A tighter pattern now binds this number; it names the requirement.
+          qByValue.set(n, q);
+          nameByValue.set(n, p.name);
         }
       }
     }
-    return order.map((value) => ({ value, q: qByValue.get(value)! }));
+    return order.map((value) => ({
+      value,
+      q: qByValue.get(value)!,
+      patternName: nameByValue.get(value)!,
+    }));
   }, [thresholds, data]);
 
   const builtBallCalls = useMemo(
@@ -227,15 +243,24 @@ export default function Home() {
             />
           )}
 
-          {dbHandle && <ReelStripViewer />}
+          {dbHandle && (
+            <ReelStripViewer
+              ref={reelStripRef}
+              onLoadedChange={setReelStripLoaded}
+              onSearch={(filter) => dbSearchRef.current?.runWithFilter(filter)}
+            />
+          )}
 
           {dbHandle && (
             <DbAmountSearch
+              ref={dbSearchRef}
               handle={dbHandle}
               facades={dbFacades}
               data={data}
               onApply={setReelStops}
               onCreatePattern={createPatternFromMatch}
+              onSlot={(rs) => reelStripRef.current?.openWithReelStops(rs)}
+              reelStripLoaded={reelStripLoaded}
             />
           )}
         </section>
@@ -298,6 +323,8 @@ export default function Home() {
                 setDbHandle(h);
                 setDbFacades(f);
               }}
+              onSlot={(rs) => reelStripRef.current?.openWithReelStops(rs)}
+              reelStripLoaded={reelStripLoaded}
             />
           )}
         </section>

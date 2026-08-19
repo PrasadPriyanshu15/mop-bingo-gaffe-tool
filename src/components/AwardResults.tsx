@@ -20,6 +20,13 @@ interface Props {
   onApply: (reelStops: number[]) => void;
   /** Message when `results` is empty. */
   emptyText: string;
+  /** Load a reelStop into the reelStrip viewer (enabled only if xml loaded). */
+  onSlot?: (reelStops: number[]) => void;
+  /** Whether a reelStrip .xml has been loaded (enables the "slot" button). */
+  reelStripLoaded?: boolean;
+  /** With an active filter, drop award cards that have no matching reelStop
+   *  instead of showing them as disabled "no results" rows. */
+  hideEmpty?: boolean;
 }
 
 /**
@@ -34,6 +41,9 @@ export default function AwardResults({
   showFacade,
   onApply,
   emptyText,
+  onSlot,
+  reelStripLoaded,
+  hideEmpty,
 }: Props) {
   const [copied, setCopied] = useState<string | null>(null);
   const [applied, setApplied] = useState<string | null>(null);
@@ -67,16 +77,26 @@ export default function AwardResults({
     });
   }
 
-  if (results.length === 0) {
+  // Resolve each card's visible reelStops up front. With `hideEmpty` and an
+  // active filter, cards with no match are dropped entirely (rather than shown
+  // as disabled "no results" rows) so only matched awards remain.
+  const cards = results
+    .map(({ award, facadeKey, reelStops }) => ({
+      award,
+      facadeKey,
+      shown: filterActive
+        ? reelStops.filter((rs) => matchesPattern(rs, parsed))
+        : reelStops,
+    }))
+    .filter((c) => !(hideEmpty && filterActive) || c.shown.length > 0);
+
+  if (cards.length === 0) {
     return <p className="muted small">{emptyText}</p>;
   }
 
   return (
     <div className="award-results">
-      {results.map(({ award, facadeKey, reelStops }) => {
-        const shown = filterActive
-          ? reelStops.filter((rs) => matchesPattern(rs, parsed))
-          : reelStops;
+      {cards.map(({ award, facadeKey, shown }) => {
         const isEmpty = shown.length === 0;
         const open = filterActive ? !isEmpty : expanded.has(award.awardId);
         return (
@@ -136,6 +156,21 @@ export default function AwardResults({
                       >
                         {copied === text ? "✓" : "copy"}
                       </button>
+                      {onSlot && (
+                        <button
+                          type="button"
+                          className="reelstop-btn reelstop-slot"
+                          disabled={!reelStripLoaded}
+                          onClick={() => onSlot(rs)}
+                          title={
+                            reelStripLoaded
+                              ? "Load into the reelStrip viewer"
+                              : "Upload a reelStrip .xml first"
+                          }
+                        >
+                          slot
+                        </button>
+                      )}
                     </div>
                   );
                 })}

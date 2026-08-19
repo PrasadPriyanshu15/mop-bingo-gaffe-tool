@@ -25,12 +25,16 @@ npm run dev        # http://localhost:3000
    pattern geometrically **contained** inside it (AllPatternsPaid). Tick rows to add
    them to the **selected outcomes** panel, which keeps a running **total payout**.
 6. The right-side **generated gaffe result** panel shows the full
-   `{ reelStops, bingoCard, ballCalls }`. `ballCalls` is built in **draw order** —
-   the sequence cycles B(1-15), I(16-30), N(31-45), G(46-60), O(61-75) — and is shown
-   as a 5-column grid so each column is one range. Each selected pattern's daub
-   numbers are called first within their range (earliest slot), so an N daub lands at
-   position 3, a second N daub at 8, and so on. Daubs are highlighted; **Copy JSON**
-   copies the result.
+   `{ reelStops, bingoCard, ballCalls }`. `ballCalls` is built as a **free draw
+   order** (balls may come in any order — the game does not cycle B/I/N/G/O). Every
+   selected pattern's daub numbers are placed **within its selected ball qty**, and
+   as late as that allows so the pattern completes right at that ball qty (crossing
+   lower, unselected tiers) rather than earlier. This is applied across all selected
+   patterns at once — including **contained** ones — so e.g. an Open Vee ticked at 5
+   balls has all its numbers inside the first 5 draws. If too many forced numbers
+   compete for the early draws to all fit, the panel shows a **warning** naming each
+   number that can't meet its pattern's ball qty. Daubs are highlighted (offenders in
+   red); **Copy JSON** copies the result.
 
 Selection is a **per-pattern cascade**: clicking a payout row selects it and every
 higher-ball-qty row of that pattern (marked "auto"), and their payouts sum. Contained
