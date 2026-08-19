@@ -113,6 +113,17 @@ export default function Home() {
     setThresholds(new Map([[pid, ballQty]]));
   }
 
+  /** Like createPatternFromMatch but selects several patterns at once (a
+   *  combination whose payouts sum to a searched amount). */
+  function createPatternsFromMatch(
+    facadeKey: string,
+    selections: { patternId: number; ballQty: number }[]
+  ) {
+    setBetKey(facadeKey);
+    setPatternId(selections[0]?.patternId ?? null);
+    setThresholds(new Map(selections.map((s) => [s.patternId, s.ballQty])));
+  }
+
   function clearPattern(pid: number) {
     setThresholds((prev) => {
       const next = new Map(prev);
@@ -259,6 +270,7 @@ export default function Home() {
               data={data}
               onApply={setReelStops}
               onCreatePattern={createPatternFromMatch}
+              onCreatePatterns={createPatternsFromMatch}
               onSlot={(rs) => reelStripRef.current?.openWithReelStops(rs)}
               reelStripLoaded={reelStripLoaded}
             />

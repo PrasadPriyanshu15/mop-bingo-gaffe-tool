@@ -294,9 +294,9 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                 </div>
 
                 <p className="muted small">
-                  Scroll a reel to move it; row {offset} (highlighted) is the
+                  {/* Scroll a reel to move it; row {offset} (highlighted) is the
                   landing row. SEARCH sends the positions to the DB amount
-                  search filter.
+                  search filter. */}
                 </p>
               </>
             )}

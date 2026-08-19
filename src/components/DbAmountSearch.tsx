@@ -29,6 +29,12 @@ interface Props {
     patternId: number,
     ballQty: number
   ) => void;
+  /** Prefill section 4 with a whole combination: several patterns/ballQtys at
+   *  one bet line whose payouts sum to a searched amount. */
+  onCreatePatterns: (
+    facadeKey: string,
+    selections: { patternId: number; ballQty: number }[]
+  ) => void;
   /** Load a reelStop into the reelStrip viewer. */
   onSlot: (reelStops: number[]) => void;
   /** Whether a reelStrip .xml is loaded (enables the "slot" button). */
@@ -49,6 +55,33 @@ interface PatternMatch {
   /** How many higher-ballQty rows are auto-included on top of this one. */
   autoCount: number;
 }
+
+/** One pattern's chosen threshold inside a combination. */
+interface ComboMember {
+  patternId: number;
+  patternName: string;
+  /** The ball call (threshold) that starts this pattern's cascade. */
+  ballQty: number;
+  /** This threshold row's own payout. */
+  payout: number;
+  /** Cumulative total this pattern contributes (row + higher-ballQty auto rows). */
+  total: number;
+  /** How many higher-ballQty rows are auto-included on top of this one. */
+  autoCount: number;
+}
+
+/** A set of distinct patterns (same bet line) whose totals sum to the amount. */
+interface PatternCombo {
+  facadeKey: string;
+  /** Length 2..3, sorted by patternId. */
+  members: ComboMember[];
+  /** Sum of member totals (== the searched amount). */
+  total: number;
+}
+
+/** Max distinct patterns per combination, and a cap on results collected. */
+const MAX_COMBO_PATTERNS = 3;
+const MAX_COMBOS = 200;
 
 /** What the Amount field resolves to. */
 type AmountInput =
@@ -94,7 +127,16 @@ type View =
  */
 const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
   function DbAmountSearch(
-    { handle, facades, data, onApply, onCreatePattern, onSlot, reelStripLoaded },
+    {
+      handle,
+      facades,
+      data,
+      onApply,
+      onCreatePattern,
+      onCreatePatterns,
+      onSlot,
+      reelStripLoaded,
+    },
     ref
   ) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -113,6 +155,12 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
   // range (from "see patterns"). lo === hi means a single amount was entered.
   const [patternMatches, setPatternMatches] = useState<
     { lo: number; hi: number; matches: PatternMatch[] } | null
+  >(null);
+  // Pattern combinations (2..3 distinct patterns at one bet line) whose totals
+  // sum to the entered amount. Only computed for a single amount that no single
+  // pattern already matches.
+  const [combos, setCombos] = useState<
+    { amount: number; combos: PatternCombo[]; capped: boolean } | null
   >(null);
 
   // Increments on every new search / cancel; a running loop bails out as soon
@@ -144,6 +192,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     setProgress(null);
     setOpenAmounts(new Set());
     setPatternMatches(null);
+    setCombos(null);
 
     try {
       const db = await import("@/lib/db");
@@ -298,6 +347,98 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     // Total ascending (then ball call) so a range reads low → high.
     matches.sort((a, b) => a.total - b.total || a.ballQty - b.ballQty);
     setPatternMatches({ lo, hi, matches });
+
+    // Combinations: only for a single exact amount that no single pattern hits.
+    // Look for 2..3 distinct patterns at ONE bet line whose totals sum to it.
+    if (amtParsed.kind !== "single" || matches.length > 0) {
+      setCombos(null);
+      return;
+    }
+    const target = amtParsed.v;
+    const found: PatternCombo[] = [];
+    const seen = new Set<string>();
+    let capped = false;
+
+    outer: for (const pt of tables) {
+      // Per pattern, the candidate thresholds whose total is still <= target
+      // (a pattern contributes its suffix-sum total, same as the single search).
+      const byPattern = new Map<number, MatchingPattern[]>();
+      for (const e of pt.entries) {
+        const arr = byPattern.get(e.patternId);
+        if (arr) arr.push(e);
+        else byPattern.set(e.patternId, [e]);
+      }
+      const patternCands: ComboMember[][] = [];
+      for (const [pid, arr] of byPattern) {
+        arr.sort((a, b) => a.ballQty - b.ballQty);
+        let suffix = 0;
+        const suffixSums = new Array<number>(arr.length);
+        for (let i = arr.length - 1; i >= 0; i--) {
+          suffix += arr[i].payout;
+          suffixSums[i] = suffix;
+        }
+        const name = data.patterns.find((p) => p.id === pid)?.name ?? `#${pid}`;
+        const cands: ComboMember[] = [];
+        for (let i = 0; i < arr.length; i++) {
+          if (suffixSums[i] <= target) {
+            cands.push({
+              patternId: pid,
+              patternName: name,
+              ballQty: arr[i].ballQty,
+              payout: arr[i].payout,
+              total: suffixSums[i],
+              autoCount: arr.length - 1 - i,
+            });
+          }
+        }
+        if (cands.length > 0) patternCands.push(cands);
+      }
+
+      // DFS: pick at most one candidate per pattern (patterns kept in order so a
+      // set is never revisited as a permutation), up to MAX_COMBO_PATTERNS,
+      // whose totals sum exactly to target. Prune when a total would overshoot.
+      const chosen: ComboMember[] = [];
+      // Returns false only to abort everything once MAX_COMBOS is reached.
+      const dfs = (start: number, sum: number): boolean => {
+        if (chosen.length >= 2 && sum === target) {
+          const members = [...chosen].sort((a, b) => a.patternId - b.patternId);
+          const key =
+            pt.facadeKey +
+            "|" +
+            members.map((m) => `${m.patternId}:${m.ballQty}`).join("|");
+          if (!seen.has(key)) {
+            seen.add(key);
+            found.push({ facadeKey: pt.facadeKey, members, total: sum });
+            if (found.length >= MAX_COMBOS) {
+              capped = true;
+              return false;
+            }
+          }
+          // Totals are positive, so extending this set can only overshoot.
+          return true;
+        }
+        if (chosen.length >= MAX_COMBO_PATTERNS) return true;
+        for (let pi = start; pi < patternCands.length; pi++) {
+          for (const c of patternCands[pi]) {
+            if (sum + c.total > target) continue;
+            chosen.push(c);
+            const ok = dfs(pi + 1, sum + c.total);
+            chosen.pop();
+            if (!ok) return false;
+          }
+        }
+        return true;
+      };
+      if (!dfs(0, 0)) break outer;
+    }
+
+    // Fewer patterns first, then by leading pattern name for a stable read.
+    found.sort(
+      (a, b) =>
+        a.members.length - b.members.length ||
+        a.members[0].patternName.localeCompare(b.members[0].patternName)
+    );
+    setCombos({ amount: target, combos: found, capped });
   }
 
   function toggleAmount(a: number) {
@@ -360,6 +501,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
               onChange={(e) => {
                 setAmount(e.target.value);
                 setPatternMatches(null);
+                setCombos(null);
               }}
               placeholder="e.g. 500 or 500-1000"
               onKeyDown={(e) => {
@@ -471,6 +613,71 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
                 </div>
               );
             })()}
+
+          {combos &&
+            (combos.combos.length === 0 ? (
+              <p className="muted small">
+                No 2–3 pattern combination totals{" "}
+                {combos.amount.toLocaleString()}
+                {showFacade ? "." : " at this bet line."}
+              </p>
+            ) : (
+              <div className="pattern-matches">
+                <div className="pattern-matches-head">
+                  {combos.combos.length} combination
+                  {combos.combos.length === 1 ? "" : "s"} summing to{" "}
+                  {combos.amount.toLocaleString()}
+                  {combos.capped ? ` (first ${MAX_COMBOS})` : ""}
+                </div>
+                {combos.combos.map((c, i) => (
+                  <div key={i} className="pattern-combo">
+                    <div className="pattern-combo-head">
+                      <span className="pattern-match-meta">
+                        {showFacade ? `${c.facadeKey} · ` : ""}
+                        {c.members.length} patterns
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        onClick={() =>
+                          onCreatePatterns(
+                            c.facadeKey,
+                            c.members.map((m) => ({
+                              patternId: m.patternId,
+                              ballQty: m.ballQty,
+                            }))
+                          )
+                        }
+                        title="Select all these patterns in section 4 (fills payout, ballCalls & result)"
+                      >
+                        create combination
+                      </button>
+                    </div>
+                    <div className="pattern-combo-members">
+                      {c.members.map((m, j) => (
+                        <div key={j} className="pattern-match">
+                          <div className="pattern-match-info">
+                            <span className="pattern-match-name">
+                              {m.patternName}{" "}
+                              <span className="pattern-id">#{m.patternId}</span>
+                              <span className="pattern-match-amount">
+                                {m.total.toLocaleString()}
+                              </span>
+                            </span>
+                            <span className="pattern-match-meta">
+                              ball call {m.ballQty}
+                              {m.autoCount > 0
+                                ? ` · ${m.payout.toLocaleString()} + ${m.autoCount} auto`
+                                : ""}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
 
           {progress && (
             <p className="muted small">

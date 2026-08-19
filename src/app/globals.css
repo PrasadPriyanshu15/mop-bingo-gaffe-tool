@@ -761,6 +761,28 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* A combination groups several pattern rows that together sum to the amount. */
+.pattern-combo {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--marked) 6%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pattern-combo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pattern-combo-members {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 /* reelStrip slot viewer */
 .reelstrip {
   display: flex;
