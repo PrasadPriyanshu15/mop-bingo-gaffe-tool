@@ -21,7 +21,9 @@ export default function GaffeResult({
 }: Props) {
   const [copied, setCopied] = useState(false);
 
-  const gaffe = { reelStops, bingoCard, ballCalls: built.calls };
+  const gaffe = reelStops.length
+    ? { reelStops, bingoCard, ballCalls: built.calls }
+    : { bingoCard, ballCalls: built.calls };
   const rawJson = JSON.stringify(gaffe);
 
   async function copy() {
@@ -76,10 +78,12 @@ export default function GaffeResult({
         </div>
       )}
 
-      <div className="result-field">
-        <span className="result-key">reelStops</span>
-        <code className="result-val">[{reelStops.join(", ")}]</code>
-      </div>
+      {reelStops.length > 0 && (
+        <div className="result-field">
+          <span className="result-key">reelStops</span>
+          <code className="result-val">[{reelStops.join(", ")}]</code>
+        </div>
+      )}
 
       <div className="result-field">
         <span className="result-key">bingoCard</span>

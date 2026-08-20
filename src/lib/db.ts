@@ -19,7 +19,6 @@ const {
 export interface Facade {
   facadeId: number;
   facadeKey: string;
-  fitPaytableKey: string;
 }
 
 export interface Award {
@@ -140,13 +139,14 @@ export async function closeDatabase(h: DbHandle): Promise<void> {
 export async function listFacades(h: DbHandle): Promise<Facade[]> {
   const { rows } = await h.sqlite3.execWithParams(
     h.db,
-    "SELECT FacadeId, FacadeKey, FitPaytableKey FROM Facade ORDER BY FacadeId",
+    // Only FacadeKey is present in every DB variant; FitPaytableKey is absent in
+    // some, so it is not selected here (nothing consumes it anyway).
+    "SELECT FacadeId, FacadeKey FROM Facade ORDER BY FacadeId",
     []
   );
   return rows.map((r: any[]) => ({
     facadeId: Number(r[0]),
     facadeKey: String(r[1]),
-    fitPaytableKey: String(r[2]),
   }));
 }
 

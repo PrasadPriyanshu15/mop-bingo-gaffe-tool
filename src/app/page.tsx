@@ -19,7 +19,7 @@ import ReelStripViewer, {
 } from "@/components/ReelStripViewer";
 import ResultJson from "@/components/ResultJson";                             
 import type { DbHandle, Facade } from "@/lib/db";
-import { containedPatterns } from "@/lib/patterns";
+import { containedPatterns, cardBallCallBase } from "@/lib/patterns";
 import { buildBallCalls, patternDaubNumbers, type Daub } from "@/lib/gaffe";
 import { SAMPLE_GAFFE } from "@/lib/sample";
 import type { MatchingPattern, Paytable59 } from "@/lib/types";
@@ -32,10 +32,14 @@ export default function Home() {
   // Per-pattern selection threshold: the lowest chosen ballQty. Every instance
   // with ballQty >= threshold is selected (selecting one cascades to higher).
   const [thresholds, setThresholds] = useState<Map<number, number>>(new Map());
-  // reelStops shown in the generated gaffe output. Seeded from the sample; the
-  // DB finder can overwrite it via the "+" button on a looked-up candidate.
-  const [reelStops, setReelStops] = useState<number[]>(
-    SAMPLE_GAFFE.reelStops ?? []
+  // reelStops shown in the generated gaffe output. Empty until the user applies
+  // a candidate from the DB finder (the "+" button on a looked-up reelStop);
+  // while empty the result shows only bingoCard + ballCalls.
+  const [reelStops, setReelStops] = useState<number[]>([]);
+  // The bingo card driving daubs and ballCalls. Starts from the sample (cloned
+  // so the shared constant is never mutated) and is editable in the card panel.
+  const [bingoCard, setBingoCard] = useState<number[][]>(() =>
+    SAMPLE_GAFFE.bingoCard.map((r) => [...r])
   );
   // The opened outcomes DB, hoisted so the left-column custom search can query
   // the same handle the finder opened.
@@ -181,7 +185,7 @@ export default function Home() {
     for (const [pid, q] of thresholds) {
       const p = data.patterns.find((x) => x.id === pid);
       if (!p) continue;
-      for (const n of patternDaubNumbers(p, SAMPLE_GAFFE.bingoCard)) {
+      for (const n of patternDaubNumbers(p, bingoCard)) {
         if (!qByValue.has(n)) {
           qByValue.set(n, q);
           nameByValue.set(n, p.name);
@@ -198,21 +202,24 @@ export default function Home() {
       q: qByValue.get(value)!,
       patternName: nameByValue.get(value)!,
     }));
-  }, [thresholds, data]);
+  }, [thresholds, data, bingoCard]);
+
+  // ballCalls base = 1..75 minus the (possibly edited) card numbers.
+  const ballCallBase = useMemo(() => cardBallCallBase(bingoCard), [bingoCard]);
 
   const builtBallCalls = useMemo(
-    () => buildBallCalls(SAMPLE_GAFFE.ballCalls, daubs),
-    [daubs]
+    () => buildBallCalls(ballCallBase, daubs),
+    [ballCallBase, daubs]
   );
 
   const gaffeJson = useMemo(
     () =>
-      JSON.stringify({
-        reelStops,
-        bingoCard: SAMPLE_GAFFE.bingoCard,
-        ballCalls: builtBallCalls.calls,
-      }),
-    [reelStops, builtBallCalls]
+      JSON.stringify(
+        reelStops.length
+          ? { reelStops, bingoCard, ballCalls: builtBallCalls.calls }
+          : { bingoCard, ballCalls: builtBallCalls.calls }
+      ),
+    [reelStops, bingoCard, builtBallCalls]
   );
 
   const forcedNames = useMemo(
@@ -280,8 +287,9 @@ export default function Home() {
         <section className="col-main" role="main">
           {ready ? (
             <BingoGrid
-              bingoCard={SAMPLE_GAFFE.bingoCard}
+              bingoCard={bingoCard}
               selected={selectedPattern}
+              onChange={setBingoCard}
             />
           ) : (
             <div className="panel empty">
@@ -353,7 +361,7 @@ export default function Home() {
 
             <GaffeResult
               reelStops={reelStops}
-              bingoCard={SAMPLE_GAFFE.bingoCard}
+              bingoCard={bingoCard}
               built={builtBallCalls}
               forcedNames={forcedNames}
             />

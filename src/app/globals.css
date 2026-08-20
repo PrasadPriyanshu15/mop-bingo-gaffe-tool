@@ -284,6 +284,44 @@ body {
   color: #06301c;
 }
 
+/* Editable card ------------------------------------------------------- */
+.bingo-cell.editing {
+  padding: 4px;
+}
+.bingo-cell-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.bingo-cell-input::-webkit-outer-spin-button,
+.bingo-cell-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.bingo-cell-input:focus {
+  outline: 2px solid var(--marked);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+.bingo-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.bingo-error {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
 @media (max-width: 520px) {
   .bingo-cell {
     width: 48px;
