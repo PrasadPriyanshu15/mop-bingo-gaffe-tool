@@ -119,6 +119,26 @@ type View =
   | { mode: "amountList"; amounts: number[]; lo: number; hi: number }
   | { mode: "groups"; groups: AmountGroup[]; ranged: boolean };
 
+/** Which kind of pattern result is shown in the tabs. */
+type PatternTab = "single" | "double" | "triple" | "doubleSub" | "tripleSub";
+
+/** A combo belongs to a tab by its member count + sub-pattern relationship. */
+function comboTab(c: PatternCombo): Exclude<PatternTab, "single"> {
+  if (c.members.length >= 3) return c.hasSubPattern ? "tripleSub" : "triple";
+  return c.hasSubPattern ? "doubleSub" : "double";
+}
+
+/** First combo tab (in display order) that has any matching combo. */
+function firstNonEmptyComboTab(
+  combos: PatternCombo[]
+): Exclude<PatternTab, "single"> | null {
+  const order = ["double", "triple", "doubleSub", "tripleSub"] as const;
+  for (const t of order) {
+    if (combos.some((c) => comboTab(c) === t)) return t;
+  }
+  return null;
+}
+
 /**
  * Free-form DB lookup, independent of the tool's computed payout:
  *  • single amount (e.g. 500) — award cards, with optional positional filter;
@@ -160,11 +180,12 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     { lo: number; hi: number; matches: PatternMatch[] } | null
   >(null);
   // Pattern combinations (2..3 distinct patterns at one bet line) whose totals
-  // sum to the entered amount. Only computed for a single amount that no single
-  // pattern already matches.
+  // land in the entered amount/range. Computed for both single amounts and ranges.
   const [combos, setCombos] = useState<
-    { amount: number; combos: PatternCombo[]; capped: boolean } | null
+    { lo: number; hi: number; combos: PatternCombo[]; capped: boolean } | null
   >(null);
+  // Which result kind the tabs are showing.
+  const [patternTab, setPatternTab] = useState<PatternTab>("single");
 
   // Increments on every new search / cancel; a running loop bails out as soon
   // as it sees its id is stale, so long scans can be interrupted.
@@ -336,6 +357,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       // Amount isn't present in the .db for the selected bet line(s).
       setPatternMatches({ lo, hi, matches: [] });
       setCombos(null);
+      setPatternTab("single");
       return;
     }
 
@@ -380,15 +402,9 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     matches.sort((a, b) => a.total - b.total || a.ballQty - b.ballQty);
     setPatternMatches({ lo, hi, matches });
 
-    // Combinations for a single exact amount: 2..3 distinct patterns at ONE bet
-    // line whose totals sum to it. Shown alongside any single-pattern matches,
-    // and split into "different patterns" vs "pattern + sub-pattern" (one member
-    // geometrically contained in another).
-    if (amtParsed.kind !== "single") {
-      setCombos(null);
-      return;
-    }
-    const target = amtParsed.v;
+    // Combinations of 2..3 distinct patterns at ONE bet line whose totals land in
+    // [lo, hi] (a single amount is just lo === hi). Shown alongside the single-
+    // pattern matches and split by size / sub-pattern relationship in the tabs.
     const patternById = new Map<number, Pattern>(
       data.patterns.map((p) => [p.id, p])
     );
@@ -397,7 +413,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     let capped = false;
 
     outer: for (const pt of tables) {
-      // Per pattern, the candidate thresholds whose total is still <= target
+      // Per pattern, the candidate thresholds whose total is still <= hi
       // (a pattern contributes its suffix-sum total, same as the single search).
       const byPattern = new Map<number, MatchingPattern[]>();
       for (const e of pt.entries) {
@@ -417,7 +433,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
         const name = data.patterns.find((p) => p.id === pid)?.name ?? `#${pid}`;
         const cands: ComboMember[] = [];
         for (let i = 0; i < arr.length; i++) {
-          if (suffixSums[i] <= target) {
+          if (suffixSums[i] <= hi) {
             cands.push({
               patternId: pid,
               patternName: name,
@@ -432,51 +448,48 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       }
 
       // DFS: pick at most one candidate per pattern (patterns kept in order so a
-      // set is never revisited as a permutation), up to MAX_COMBO_PATTERNS,
-      // whose totals sum exactly to target. Prune when a total would overshoot.
+      // set is never revisited as a permutation), up to MAX_COMBO_PATTERNS.
+      // Record whenever the running total lands in [lo, hi] with >= 2 members;
+      // keep exploring (a valid pair can still extend into a valid triple). Prune
+      // once a total would exceed hi. Returns false only to abort at MAX_COMBOS.
       const chosen: ComboMember[] = [];
-      // Returns false only to abort everything once MAX_COMBOS is reached.
-      const dfs = (start: number, sum: number): boolean => {
-        if (chosen.length >= 2 && sum === target) {
-          const members = [...chosen].sort((a, b) => a.patternId - b.patternId);
-          const key =
-            pt.facadeKey +
-            "|" +
-            members.map((m) => `${m.patternId}:${m.ballQty}`).join("|");
-          if (!seen.has(key)) {
-            seen.add(key);
-            // A containment relationship among any member pair marks this as a
-            // "pattern + sub-pattern" combination.
-            let hasSubPattern = false;
-            for (let a = 0; a < members.length && !hasSubPattern; a++) {
-              for (let b = 0; b < members.length; b++) {
-                if (a === b) continue;
-                const pa = patternById.get(members[a].patternId);
-                const pb = patternById.get(members[b].patternId);
-                if (pa && pb && patternContains(pa, pb)) {
-                  hasSubPattern = true;
-                  break;
-                }
-              }
-            }
-            found.push({
-              facadeKey: pt.facadeKey,
-              members,
-              total: sum,
-              hasSubPattern,
-            });
-            if (found.length >= MAX_COMBOS) {
-              capped = true;
-              return false;
+      const record = (sum: number): boolean => {
+        const members = [...chosen].sort((a, b) => a.patternId - b.patternId);
+        const key =
+          pt.facadeKey +
+          "|" +
+          members.map((m) => `${m.patternId}:${m.ballQty}`).join("|");
+        if (seen.has(key)) return true;
+        seen.add(key);
+        // A containment relationship among any member pair marks this as a
+        // "pattern + sub-pattern" combination.
+        let hasSubPattern = false;
+        for (let a = 0; a < members.length && !hasSubPattern; a++) {
+          for (let b = 0; b < members.length; b++) {
+            if (a === b) continue;
+            const pa = patternById.get(members[a].patternId);
+            const pb = patternById.get(members[b].patternId);
+            if (pa && pb && patternContains(pa, pb)) {
+              hasSubPattern = true;
+              break;
             }
           }
-          // Totals are positive, so extending this set can only overshoot.
-          return true;
+        }
+        found.push({ facadeKey: pt.facadeKey, members, total: sum, hasSubPattern });
+        if (found.length >= MAX_COMBOS) {
+          capped = true;
+          return false;
+        }
+        return true;
+      };
+      const dfs = (start: number, sum: number): boolean => {
+        if (chosen.length >= 2 && sum >= lo && sum <= hi) {
+          if (!record(sum)) return false;
         }
         if (chosen.length >= MAX_COMBO_PATTERNS) return true;
         for (let pi = start; pi < patternCands.length; pi++) {
           for (const c of patternCands[pi]) {
-            if (sum + c.total > target) continue;
+            if (sum + c.total > hi) continue;
             chosen.push(c);
             const ok = dfs(pi + 1, sum + c.total);
             chosen.pop();
@@ -488,15 +501,20 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       if (!dfs(0, 0)) break outer;
     }
 
-    // Different-pattern combos first, then pattern+sub-pattern; within each,
-    // fewer members first, then by leading pattern name for a stable read.
+    // Total ascending, then fewer members, then leading pattern name.
     found.sort(
       (a, b) =>
-        Number(a.hasSubPattern) - Number(b.hasSubPattern) ||
+        a.total - b.total ||
         a.members.length - b.members.length ||
         a.members[0].patternName.localeCompare(b.members[0].patternName)
     );
-    setCombos({ amount: target, combos: found, capped });
+    setCombos({ lo, hi, combos: found, capped });
+    // Default the tab to the first non-empty kind (single first).
+    setPatternTab(
+      matches.length > 0
+        ? "single"
+        : firstNonEmptyComboTab(found) ?? "single"
+    );
   }
 
   function toggleAmount(a: number) {
@@ -625,111 +643,85 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
               const amtLabel = ranged
                 ? `${lo.toLocaleString()}–${hi.toLocaleString()}`
                 : lo.toLocaleString();
-              return patternMatches.matches.length === 0 ? (
-                <p className="muted small">
-                  No pattern totals {ranged ? "fall in" : "exactly"} {amtLabel}
-                  {showFacade ? "." : " at this bet line."}
-                </p>
-              ) : (
-                <div className="pattern-matches">
-                  <div className="pattern-matches-head">
-                    {patternMatches.matches.length} pattern
-                    {patternMatches.matches.length === 1 ? "" : "s"} total{" "}
-                    {ranged ? "in " : ""}
-                    {amtLabel}
-                  </div>
-                {patternMatches.matches.map((m, i) => (
-                  <div key={i} className="pattern-match">
-                    <div className="pattern-match-info">
-                      <span className="pattern-match-name">
-                        {m.patternName}{" "}
-                        <span className="pattern-id">#{m.patternId}</span>
-                        <span className="pattern-match-amount">
-                          {m.total.toLocaleString()}
-                        </span>
-                      </span>
-                      <span className="pattern-match-meta">
-                        {showFacade ? `${m.facadeKey} · ` : ""}
-                        ball call {m.ballQty}
-                        {m.autoCount > 0
-                          ? ` · ${m.payout.toLocaleString()} + ${m.autoCount} auto`
-                          : ""}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-small"
-                      onClick={() =>
-                        onCreatePattern(m.facadeKey, m.patternId, m.ballQty)
-                      }
-                      title="Select this pattern in section 4 (fills payout, ballCalls & result)"
-                    >
-                      create pattern
-                    </button>
-                  </div>
-                ))}
-                </div>
-              );
-            })()}
+              const singles = patternMatches.matches;
+              const comboList = combos?.combos ?? [];
+              const byTab: Record<PatternTab, PatternCombo[]> = {
+                single: [],
+                double: [],
+                triple: [],
+                doubleSub: [],
+                tripleSub: [],
+              };
+              for (const c of comboList) byTab[comboTab(c)].push(c);
+              const counts: Record<PatternTab, number> = {
+                single: singles.length,
+                double: byTab.double.length,
+                triple: byTab.triple.length,
+                doubleSub: byTab.doubleSub.length,
+                tripleSub: byTab.tripleSub.length,
+              };
+              const total =
+                counts.single +
+                counts.double +
+                counts.triple +
+                counts.doubleSub +
+                counts.tripleSub;
 
-          {combos &&
-            (combos.combos.length === 0 ? (
-              (patternMatches?.matches.length ?? 0) === 0 ? (
-                <p className="muted small">
-                  No 2–3 pattern combination totals{" "}
-                  {combos.amount.toLocaleString()}
-                  {showFacade ? "." : " at this bet line."}
-                </p>
-              ) : null
-            ) : (
-              <div className="pattern-matches">
-                <div className="pattern-matches-head">
-                  {combos.combos.length} combination
-                  {combos.combos.length === 1 ? "" : "s"} summing to{" "}
-                  {combos.amount.toLocaleString()}
-                  {(() => {
-                    const sub = combos.combos.filter(
-                      (c) => c.hasSubPattern
-                    ).length;
-                    const diff = combos.combos.length - sub;
-                    return sub > 0 && diff > 0
-                      ? ` (${diff} different-pattern, ${sub} with sub-pattern)`
-                      : "";
-                  })()}
-                  {combos.capped ? ` · first ${MAX_COMBOS}` : ""}
-                </div>
-                {combos.combos.map((c, i) => (
-                  <div key={i} className="pattern-combo">
-                    <div className="pattern-combo-head">
-                      <span className="pattern-match-meta">
-                        {showFacade ? `${c.facadeKey} · ` : ""}
-                        {c.members.length} patterns
-                        {c.hasSubPattern ? (
-                          <span className="badge badge-sub">
-                            incl. sub-pattern
-                          </span>
-                        ) : null}
-                      </span>
+              if (total === 0) {
+                return (
+                  <p className="muted small">
+                    No pattern {ranged ? "totals fall in" : "total is exactly"}{" "}
+                    {amtLabel}
+                    {showFacade ? "." : " at this bet line."}
+                  </p>
+                );
+              }
+
+              const TABS: { key: PatternTab; label: string }[] = [
+                { key: "single", label: "Single" },
+                { key: "double", label: "Double" },
+                { key: "triple", label: "Triple" },
+                { key: "doubleSub", label: "Double + sub" },
+                { key: "tripleSub", label: "Triple + sub" },
+              ];
+              const active =
+                counts[patternTab] > 0
+                  ? patternTab
+                  : TABS.find((t) => counts[t.key] > 0)?.key ?? "single";
+
+              return (
+                <div className="pattern-results">
+                  <div className="pattern-tabs" role="tablist">
+                    {TABS.map((t) => (
                       <button
+                        key={t.key}
                         type="button"
-                        className="btn btn-small"
-                        onClick={() =>
-                          onCreatePatterns(
-                            c.facadeKey,
-                            c.members.map((m) => ({
-                              patternId: m.patternId,
-                              ballQty: m.ballQty,
-                            }))
-                          )
+                        role="tab"
+                        aria-selected={active === t.key}
+                        className={
+                          "pattern-tab" + (active === t.key ? " active" : "")
                         }
-                        title="Select all these patterns in section 4 (fills payout, ballCalls & result)"
+                        disabled={counts[t.key] === 0}
+                        onClick={() => setPatternTab(t.key)}
                       >
-                        create combination
+                        {t.label}{" "}
+                        <span className="pattern-tab-count">
+                          {counts[t.key]}
+                        </span>
                       </button>
-                    </div>
-                    <div className="pattern-combo-members">
-                      {c.members.map((m, j) => (
-                        <div key={j} className="pattern-match">
+                    ))}
+                  </div>
+
+                  {active === "single" ? (
+                    <div className="pattern-matches">
+                      <div className="pattern-matches-head">
+                        {counts.single} pattern
+                        {counts.single === 1 ? "" : "s"} total{" "}
+                        {ranged ? "in " : ""}
+                        {amtLabel}
+                      </div>
+                      {singles.map((m, i) => (
+                        <div key={i} className="pattern-match">
                           <div className="pattern-match-info">
                             <span className="pattern-match-name">
                               {m.patternName}{" "}
@@ -739,19 +731,97 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
                               </span>
                             </span>
                             <span className="pattern-match-meta">
+                              {showFacade ? `${m.facadeKey} · ` : ""}
                               ball call {m.ballQty}
                               {m.autoCount > 0
                                 ? ` · ${m.payout.toLocaleString()} + ${m.autoCount} auto`
                                 : ""}
                             </span>
                           </div>
+                          <button
+                            type="button"
+                            className="btn btn-small"
+                            onClick={() =>
+                              onCreatePattern(m.facadeKey, m.patternId, m.ballQty)
+                            }
+                            title="Select this pattern in section 4 (fills payout, ballCalls & result)"
+                          >
+                            create pattern
+                          </button>
                         </div>
                       ))}
                     </div>
-                  </div>
-                ))}
-              </div>
-            ))}
+                  ) : (
+                    <div className="pattern-matches">
+                      <div className="pattern-matches-head">
+                        {counts[active]} combination
+                        {counts[active] === 1 ? "" : "s"}{" "}
+                        {ranged ? "in " : "summing to "}
+                        {amtLabel}
+                        {combos?.capped ? ` · first ${MAX_COMBOS}` : ""}
+                      </div>
+                      {byTab[active].map((c, i) => (
+                        <div key={i} className="pattern-combo">
+                          <div className="pattern-combo-head">
+                            <span className="pattern-match-meta">
+                              {showFacade ? `${c.facadeKey} · ` : ""}
+                              {c.members.length} patterns
+                              {c.hasSubPattern ? (
+                                <span className="badge badge-sub">
+                                  incl. sub-pattern
+                                </span>
+                              ) : null}
+                              <span className="pattern-match-amount">
+                                {c.total.toLocaleString()}
+                              </span>
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-small"
+                              onClick={() =>
+                                onCreatePatterns(
+                                  c.facadeKey,
+                                  c.members.map((m) => ({
+                                    patternId: m.patternId,
+                                    ballQty: m.ballQty,
+                                  }))
+                                )
+                              }
+                              title="Select all these patterns in section 4 (fills payout, ballCalls & result)"
+                            >
+                              create combination
+                            </button>
+                          </div>
+                          <div className="pattern-combo-members">
+                            {c.members.map((m, j) => (
+                              <div key={j} className="pattern-match">
+                                <div className="pattern-match-info">
+                                  <span className="pattern-match-name">
+                                    {m.patternName}{" "}
+                                    <span className="pattern-id">
+                                      #{m.patternId}
+                                    </span>
+                                    <span className="pattern-match-amount">
+                                      {m.total.toLocaleString()}
+                                    </span>
+                                  </span>
+                                  <span className="pattern-match-meta">
+                                    ball call {m.ballQty}
+                                    {m.autoCount > 0
+                                      ? ` · ${m.payout.toLocaleString()} + ${m.autoCount} auto`
+                                      : ""}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
           {progress && (
             <p className="muted small">

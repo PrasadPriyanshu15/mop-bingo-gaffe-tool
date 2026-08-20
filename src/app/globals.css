@@ -804,6 +804,51 @@ body {
   opacity: 0.5;
   cursor: default;
 }
+/* Pattern-result tabs (single / double / triple / …). */
+.pattern-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.pattern-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.pattern-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.pattern-tab:hover:not(:disabled) {
+  color: var(--text);
+}
+.pattern-tab.active {
+  color: var(--marked-text);
+  background: var(--marked);
+  border-color: var(--marked);
+}
+.pattern-tab:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pattern-tab-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
 .pattern-matches {
   display: flex;
   flex-direction: column;
