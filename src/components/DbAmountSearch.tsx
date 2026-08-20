@@ -7,8 +7,9 @@ import {
   useState,
 } from "react";
 import type { DbHandle, Facade } from "@/lib/db";
-import type { MatchingPattern, Paytable59 } from "@/lib/types";
+import type { MatchingPattern, Pattern, Paytable59 } from "@/lib/types";
 import { parsePattern, patternIsActive } from "@/lib/reelstop";
+import { patternContains } from "@/lib/patterns";
 import AwardResults, { type AwardResult } from "./AwardResults";
 
 export interface DbAmountSearchHandle {
@@ -77,6 +78,8 @@ interface PatternCombo {
   members: ComboMember[];
   /** Sum of member totals (== the searched amount). */
   total: number;
+  /** True when a member is geometrically contained in another (pattern + sub). */
+  hasSubPattern: boolean;
 }
 
 /** Max distinct patterns per combination, and a cap on results collected. */
@@ -280,8 +283,9 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     (amtParsed.kind === "single" || amtParsed.kind === "range") && !!data;
 
   /** List patterns whose total equals the entered amount, or falls inside the
-   *  entered range, at the selected bet line(s). */
-  function seePatterns() {
+   *  entered range, at the selected bet line(s). Gated to bet lines where the
+   *  loaded .db actually has that amount (see below). */
+  async function seePatterns() {
     // Resolve the entered amount/range into an inclusive [lo, hi] window.
     let lo: number;
     let hi: number;
@@ -303,9 +307,37 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     const selKey = facades.find(
       (f) => String(f.facadeId) === facadeSel
     )?.facadeKey;
-    const tables = showFacade
+    let tables = showFacade
       ? data.paytables
       : data.paytables.filter((p) => p.facadeKey === selKey);
+
+    // Gate by the .db: only keep bet lines that actually have an Award for this
+    // amount/range, so pattern results reflect real outcomes (not just what the
+    // paytable could theoretically pay). For "All bet lines" this narrows to the
+    // bet lines that contain the amount.
+    try {
+      const db = await import("@/lib/db");
+      const presentIds =
+        amtParsed.kind === "range"
+          ? await db.findFacadesWithAmountInRange(handle, lo, hi)
+          : await db.findFacadesWithAmount(handle, lo);
+      const presentKeys = new Set(
+        facades
+          .filter((f) => presentIds.includes(f.facadeId))
+          .map((f) => f.facadeKey)
+      );
+      tables = tables.filter((t) => presentKeys.has(t.facadeKey));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "DB lookup failed.");
+      return;
+    }
+
+    if (tables.length === 0) {
+      // Amount isn't present in the .db for the selected bet line(s).
+      setPatternMatches({ lo, hi, matches: [] });
+      setCombos(null);
+      return;
+    }
 
     const matches: PatternMatch[] = [];
     for (const pt of tables) {
@@ -348,13 +380,18 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     matches.sort((a, b) => a.total - b.total || a.ballQty - b.ballQty);
     setPatternMatches({ lo, hi, matches });
 
-    // Combinations: only for a single exact amount that no single pattern hits.
-    // Look for 2..3 distinct patterns at ONE bet line whose totals sum to it.
-    if (amtParsed.kind !== "single" || matches.length > 0) {
+    // Combinations for a single exact amount: 2..3 distinct patterns at ONE bet
+    // line whose totals sum to it. Shown alongside any single-pattern matches,
+    // and split into "different patterns" vs "pattern + sub-pattern" (one member
+    // geometrically contained in another).
+    if (amtParsed.kind !== "single") {
       setCombos(null);
       return;
     }
     const target = amtParsed.v;
+    const patternById = new Map<number, Pattern>(
+      data.patterns.map((p) => [p.id, p])
+    );
     const found: PatternCombo[] = [];
     const seen = new Set<string>();
     let capped = false;
@@ -408,7 +445,26 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
             members.map((m) => `${m.patternId}:${m.ballQty}`).join("|");
           if (!seen.has(key)) {
             seen.add(key);
-            found.push({ facadeKey: pt.facadeKey, members, total: sum });
+            // A containment relationship among any member pair marks this as a
+            // "pattern + sub-pattern" combination.
+            let hasSubPattern = false;
+            for (let a = 0; a < members.length && !hasSubPattern; a++) {
+              for (let b = 0; b < members.length; b++) {
+                if (a === b) continue;
+                const pa = patternById.get(members[a].patternId);
+                const pb = patternById.get(members[b].patternId);
+                if (pa && pb && patternContains(pa, pb)) {
+                  hasSubPattern = true;
+                  break;
+                }
+              }
+            }
+            found.push({
+              facadeKey: pt.facadeKey,
+              members,
+              total: sum,
+              hasSubPattern,
+            });
             if (found.length >= MAX_COMBOS) {
               capped = true;
               return false;
@@ -432,9 +488,11 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       if (!dfs(0, 0)) break outer;
     }
 
-    // Fewer patterns first, then by leading pattern name for a stable read.
+    // Different-pattern combos first, then pattern+sub-pattern; within each,
+    // fewer members first, then by leading pattern name for a stable read.
     found.sort(
       (a, b) =>
+        Number(a.hasSubPattern) - Number(b.hasSubPattern) ||
         a.members.length - b.members.length ||
         a.members[0].patternName.localeCompare(b.members[0].patternName)
     );
@@ -543,7 +601,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
             <button
               type="button"
               className="btn btn-alt"
-              onClick={seePatterns}
+              onClick={() => void seePatterns()}
               disabled={!canSeePatterns || searching}
               title={
                 canSeePatterns
@@ -616,18 +674,29 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
 
           {combos &&
             (combos.combos.length === 0 ? (
-              <p className="muted small">
-                No 2–3 pattern combination totals{" "}
-                {combos.amount.toLocaleString()}
-                {showFacade ? "." : " at this bet line."}
-              </p>
+              (patternMatches?.matches.length ?? 0) === 0 ? (
+                <p className="muted small">
+                  No 2–3 pattern combination totals{" "}
+                  {combos.amount.toLocaleString()}
+                  {showFacade ? "." : " at this bet line."}
+                </p>
+              ) : null
             ) : (
               <div className="pattern-matches">
                 <div className="pattern-matches-head">
                   {combos.combos.length} combination
                   {combos.combos.length === 1 ? "" : "s"} summing to{" "}
                   {combos.amount.toLocaleString()}
-                  {combos.capped ? ` (first ${MAX_COMBOS})` : ""}
+                  {(() => {
+                    const sub = combos.combos.filter(
+                      (c) => c.hasSubPattern
+                    ).length;
+                    const diff = combos.combos.length - sub;
+                    return sub > 0 && diff > 0
+                      ? ` (${diff} different-pattern, ${sub} with sub-pattern)`
+                      : "";
+                  })()}
+                  {combos.capped ? ` · first ${MAX_COMBOS}` : ""}
                 </div>
                 {combos.combos.map((c, i) => (
                   <div key={i} className="pattern-combo">
@@ -635,6 +704,11 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
                       <span className="pattern-match-meta">
                         {showFacade ? `${c.facadeKey} · ` : ""}
                         {c.members.length} patterns
+                        {c.hasSubPattern ? (
+                          <span className="badge badge-sub">
+                            incl. sub-pattern
+                          </span>
+                        ) : null}
                       </span>
                       <button
                         type="button"

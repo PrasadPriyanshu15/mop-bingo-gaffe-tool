@@ -11,6 +11,40 @@ export const COLUMN_LETTERS = ["B", "I", "N", "G", "O"] as const;
 /** The number range covered by each column, e.g. column 0 -> "1-15". */
 export const COLUMN_RANGES = ["1-15", "16-30", "31-45", "46-60", "61-75"] as const;
 
+/**
+ * Distinct highlight colors, one per forced pattern (cycles for >6). Order:
+ * yellow, purple, blue, green, orange, pink — kept in sync with the CSS tokens.
+ */
+export const HIGHLIGHT_COLORS = [
+  "#ffd23f",
+  "#b98bff",
+  "#4c8dff",
+  "#4ad991",
+  "#ff9f43",
+  "#ff6b9d",
+] as const;
+
+/** Pick the highlight color for the i-th forced pattern (cycles). */
+export function highlightColor(i: number): string {
+  return HIGHLIGHT_COLORS[i % HIGHLIGHT_COLORS.length];
+}
+
+/**
+ * Background for a cell/ball covered by `colors`: undefined for none, a solid
+ * color for one, and an even-split diagonal gradient when shared by several.
+ */
+export function cellHighlightStyle(
+  colors: string[]
+): { background: string } | undefined {
+  if (colors.length === 0) return undefined;
+  if (colors.length === 1) return { background: colors[0] };
+  const n = colors.length;
+  const stops = colors
+    .map((c, i) => `${c} ${(i / n) * 100}% ${((i + 1) / n) * 100}%`)
+    .join(", ");
+  return { background: `linear-gradient(135deg, ${stops})` };
+}
+
 /** Indices of cells that are part of the pattern (map char '1' or '2'). */
 export function patternCells(map: string): number[] {
   const cells: number[] = [];
@@ -107,6 +141,19 @@ export function randomBingoCard(): number[][] {
     }
   }
   return card;
+}
+
+/**
+ * True when `inner` is geometrically contained inside `outer` (its marked cells
+ * are a subset of outer's, with the free space always treated as daubed). Same
+ * semantics as `containedPatterns`, for a single pair.
+ */
+export function patternContains(outer: Pattern, inner: Pattern): boolean {
+  if (outer.id === inner.id) return false;
+  if (inner.cells.length === 0) return false;
+  const available = new Set<number>(outer.cells);
+  available.add(FREE_INDEX);
+  return inner.cells.every((c) => available.has(c));
 }
 
 /**

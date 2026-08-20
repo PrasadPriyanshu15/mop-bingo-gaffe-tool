@@ -284,6 +284,24 @@ body {
   color: #06301c;
 }
 
+/* Per-pattern highlight (background set inline; may be a gradient). */
+.bingo-cell.hl {
+  color: var(--marked-text);
+  font-weight: 700;
+  border-color: transparent;
+}
+.bingo-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+}
+.bingo-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 /* Editable card ------------------------------------------------------- */
 .bingo-cell.editing {
   padding: 4px;
@@ -375,6 +393,24 @@ body {
   background: rgba(74, 217, 145, 0.18);
   color: var(--free);
   margin-left: 6px;
+}
+.badge-pattern {
+  background: rgba(255, 210, 63, 0.16);
+  color: var(--marked);
+}
+.badge-sub {
+  background: rgba(185, 139, 255, 0.18);
+  color: var(--contained);
+  margin-left: 8px;
+}
+/* Color swatch tying a pattern to its highlight color on the card. */
+.pattern-dot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  flex: 0 0 auto;
 }
 
 .instances tr.row-auto {
@@ -490,6 +526,11 @@ body {
 .result-card-cell.free {
   color: var(--free);
 }
+.result-card-cell.hl {
+  color: var(--marked-text);
+  font-weight: 700;
+  border-color: transparent;
+}
 
 .ballcalls {
   display: flex;
@@ -565,6 +606,12 @@ body {
   background: var(--danger);
   color: #2a0000;
   border-color: var(--danger);
+  font-weight: 700;
+}
+/* Forced ball colored by its pattern(s); background comes from inline style. */
+.bcall.hl {
+  color: var(--marked-text);
+  border-color: transparent;
   font-weight: 700;
 }
 

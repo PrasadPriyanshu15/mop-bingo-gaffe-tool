@@ -7,17 +7,25 @@ import {
   COLUMN_RANGES,
   FREE_INDEX,
   GRID_SIZE,
+  cellHighlightStyle,
   cellToRowCol,
   columnBounds,
   randomBingoCard,
   validateBingoCard,
 } from "@/lib/patterns";
 import { SAMPLE_GAFFE } from "@/lib/sample";
-import type { Pattern } from "@/lib/types";
+
+/** One forced pattern to color on the card. */
+export interface BingoHighlight {
+  name: string;
+  cells: number[];
+  color: string;
+}
 
 interface Props {
   bingoCard: number[][];
-  selected: Pattern | null;
+  /** Forced patterns, each colored distinctly (gradient where cells overlap). */
+  highlights: BingoHighlight[];
   /** Apply an edited card back to the page. */
   onChange: (card: number[][]) => void;
 }
@@ -45,8 +53,17 @@ function fromDraft(draft: string[][]): number[][] {
  * pattern highlights its marked cells and the center is the free space. An Edit
  * button switches to inline number inputs (Save / Cancel / Reset / Randomize).
  */
-export default function BingoGrid({ bingoCard, selected, onChange }: Props) {
-  const markedSet = new Set(selected?.cells ?? []);
+export default function BingoGrid({ bingoCard, highlights, onChange }: Props) {
+  // Per-cell list of colors covering it (skip the free center).
+  const colorsByCell = new Map<number, string[]>();
+  for (const h of highlights) {
+    for (const cell of h.cells) {
+      if (cell === FREE_INDEX) continue;
+      const arr = colorsByCell.get(cell);
+      if (arr) arr.push(h.color);
+      else colorsByCell.set(cell, [h.color]);
+    }
+  }
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string[][]>(() => toDraft(bingoCard));
   const [error, setError] = useState<string | null>(null);
@@ -159,15 +176,17 @@ export default function BingoGrid({ bingoCard, selected, onChange }: Props) {
             }
 
             const value = bingoCard[row]?.[col];
-            const marked = markedSet.has(i);
+            const colors = colorsByCell.get(i);
+            const hlStyle = colors ? cellHighlightStyle(colors) : undefined;
             return (
               <div
                 key={i}
                 className={
                   "bingo-cell" +
-                  (marked ? " marked" : "") +
+                  (hlStyle ? " hl" : "") +
                   (isFree ? " free" : "")
                 }
+                style={hlStyle}
               >
                 {isFree ? "FREE" : value}
               </div>
@@ -185,9 +204,18 @@ export default function BingoGrid({ bingoCard, selected, onChange }: Props) {
         </p>
       )}
 
-      {!editing && selected && (
-        <p className="muted">
-          Highlighting <strong>{selected.name}</strong> (#{selected.id})
+      {!editing && highlights.length > 0 && (
+        <p className="muted small bingo-legend">
+          {highlights.map((h) => (
+            <span key={h.name} className="bingo-legend-item">
+              <span
+                className="pattern-dot"
+                style={{ background: h.color }}
+                aria-hidden="true"
+              />
+              {h.name}
+            </span>
+          ))}
         </p>
       )}
     </div>

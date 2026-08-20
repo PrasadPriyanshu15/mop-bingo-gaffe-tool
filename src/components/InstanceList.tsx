@@ -10,8 +10,10 @@ interface GroupProps {
   threshold: number | null;
   /** Toggle selection at a ball qty (selects it + all higher). */
   onToggle: (ballQty: number) => void;
-  /** Label shown as the group's role, e.g. "Selected" or "Contained". */
+  /** Label shown as the group's role, e.g. "Pattern 1" or "Contained". */
   badge?: string;
+  /** Highlight color for this pattern (shows a dot tying it to the card). */
+  color?: string;
 }
 
 /**
@@ -24,17 +26,27 @@ export default function InstanceList({
   threshold,
   onToggle,
   badge,
+  color,
 }: GroupProps) {
   return (
     <div className="group">
       <div className="group-head">
         <MiniPattern map={pattern.map} size={36} />
         <div className="group-title">
+          {color && (
+            <span
+              className="pattern-dot"
+              style={{ background: color }}
+              aria-hidden="true"
+            />
+          )}
           <span className="group-name">
             {pattern.name} <span className="pattern-id">#{pattern.id}</span>
           </span>
           {badge && (
-            <span className={"badge badge-" + badge.toLowerCase()}>{badge}</span>
+            <span className={"badge badge-" + badge.toLowerCase().split(" ")[0]}>
+              {badge}
+            </span>
           )}
         </div>
       </div>

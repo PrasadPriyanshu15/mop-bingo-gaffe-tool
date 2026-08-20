@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { BuiltBallCalls } from "@/lib/gaffe";
-import { COLUMN_LETTERS, COLUMN_RANGES } from "@/lib/patterns";
+import { COLUMN_LETTERS, COLUMN_RANGES, cellHighlightStyle } from "@/lib/patterns";
 
 interface Props {
   reelStops: number[];
@@ -10,6 +10,8 @@ interface Props {
   built: BuiltBallCalls;
   /** Names of the patterns currently being forced (for the hint line). */
   forcedNames: string[];
+  /** Per-number highlight colors (a shared number carries several colors). */
+  daubColors: Map<number, string[]>;
 }
 
 /** Right-side panel: the generated gaffe result, with draw-order ballCalls. */
@@ -18,6 +20,7 @@ export default function GaffeResult({
   bingoCard,
   built,
   forcedNames,
+  daubColors,
 }: Props) {
   const [copied, setCopied] = useState(false);
 
@@ -90,14 +93,23 @@ export default function GaffeResult({
         <div className="result-card">
           {bingoCard.map((row, r) => (
             <div key={r} className="result-card-row">
-              {row.map((n, c) => (
-                <span
-                  key={c}
-                  className={"result-card-cell" + (n === 0 ? " free" : "")}
-                >
-                  {n === 0 ? "★" : n}
-                </span>
-              ))}
+              {row.map((n, c) => {
+                const colors = n !== 0 ? daubColors.get(n) : undefined;
+                const hlStyle = colors ? cellHighlightStyle(colors) : undefined;
+                return (
+                  <span
+                    key={c}
+                    className={
+                      "result-card-cell" +
+                      (n === 0 ? " free" : "") +
+                      (hlStyle ? " hl" : "")
+                    }
+                    style={hlStyle}
+                  >
+                    {n === 0 ? "★" : n}
+                  </span>
+                );
+              })}
             </div>
           ))}
         </div>
@@ -124,12 +136,21 @@ export default function GaffeResult({
                 if (v == null) return <span key={c} className="bcall empty" />;
                 const daub = built.daubSet.has(v);
                 const bad = built.infeasible.some((p) => p.value === v);
+                const colors = daubColors.get(v);
+                // Infeasible balls keep the red .bad style; otherwise a forced
+                // ball takes its pattern color(s).
+                const hlStyle =
+                  !bad && colors ? cellHighlightStyle(colors) : undefined;
                 return (
                   <span
                     key={c}
                     className={
-                      "bcall" + (daub ? " inserted" : "") + (bad ? " bad" : "")
+                      "bcall" +
+                      (daub ? " inserted" : "") +
+                      (bad ? " bad" : "") +
+                      (hlStyle ? " hl" : "")
                     }
+                    style={hlStyle}
                   >
                     {v}
                   </span>

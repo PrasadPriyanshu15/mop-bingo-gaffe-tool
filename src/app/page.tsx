@@ -19,10 +19,14 @@ import ReelStripViewer, {
 } from "@/components/ReelStripViewer";
 import ResultJson from "@/components/ResultJson";                             
 import type { DbHandle, Facade } from "@/lib/db";
-import { containedPatterns, cardBallCallBase } from "@/lib/patterns";
+import {
+  containedPatterns,
+  cardBallCallBase,
+  highlightColor,
+} from "@/lib/patterns";
 import { buildBallCalls, patternDaubNumbers, type Daub } from "@/lib/gaffe";
 import { SAMPLE_GAFFE } from "@/lib/sample";
-import type { MatchingPattern, Paytable59 } from "@/lib/types";
+import type { MatchingPattern, Pattern, Paytable59 } from "@/lib/types";
 
 export default function Home() {
   const [data, setData] = useState<Paytable59 | null>(null);
@@ -67,6 +71,52 @@ export default function Home() {
         : [],
     [selectedPattern, data]
   );
+
+  // Patterns to color/list: the browsed pattern first (if any), then every other
+  // forced (thresholded) pattern in insertion order — e.g. a combination's
+  // members. Deduped; the index drives both the card color and the "Pattern N"
+  // label so the two always agree.
+  const highlightPatterns = useMemo<Pattern[]>(() => {
+    if (!data) return [];
+    const list: Pattern[] = [];
+    const seen = new Set<number>();
+    const push = (pid: number) => {
+      if (seen.has(pid)) return;
+      const p = data.patterns.find((x) => x.id === pid);
+      if (p) {
+        list.push(p);
+        seen.add(pid);
+      }
+    };
+    if (selectedPattern) push(selectedPattern.id);
+    for (const pid of thresholds.keys()) push(pid);
+    return list;
+  }, [data, selectedPattern, thresholds]);
+
+  const bingoHighlights = useMemo(
+    () =>
+      highlightPatterns.map((p, i) => ({
+        name: p.name,
+        cells: p.cells,
+        color: highlightColor(i),
+      })),
+    [highlightPatterns]
+  );
+
+  // Per card-number -> the colors of the pattern(s) that force it (a shared
+  // number carries several). Colors the result's card cells and ballCalls.
+  const daubColors = useMemo(() => {
+    const map = new Map<number, string[]>();
+    highlightPatterns.forEach((p, i) => {
+      const color = highlightColor(i);
+      for (const n of patternDaubNumbers(p, bingoCard)) {
+        const arr = map.get(n);
+        if (arr) arr.push(color);
+        else map.set(n, [color]);
+      }
+    });
+    return map;
+  }, [highlightPatterns, bingoCard]);
 
   /** Payable rows for a pattern id in the active bet level (ballQty asc). */
   function entriesFor(id: number): MatchingPattern[] {
@@ -288,7 +338,7 @@ export default function Home() {
           {ready ? (
             <BingoGrid
               bingoCard={bingoCard}
-              selected={selectedPattern}
+              highlights={bingoHighlights}
               onChange={setBingoCard}
             />
           ) : (
@@ -297,40 +347,50 @@ export default function Home() {
             </div>
           )}
 
-          {canPick && selectedPattern && (
+          {canPick && (selectedPattern || thresholds.size > 0) && (
             <div className="panel">
               <div className="panel-title">
                 4 · Payouts &amp; contained patterns
               </div>
 
-              <InstanceList
-                pattern={selectedPattern}
-                entries={entriesFor(selectedPattern.id)}
-                threshold={thresholds.get(selectedPattern.id) ?? null}
-                onToggle={(q) => toggleRow(selectedPattern.id, q)}
-                badge="Selected"
-              />
+              {/* Every forced/browsed pattern, colored + labeled Pattern N. */}
+              {highlightPatterns.map((p, i) => (
+                <InstanceList
+                  key={p.id}
+                  pattern={p}
+                  entries={entriesFor(p.id)}
+                  threshold={thresholds.get(p.id) ?? null}
+                  onToggle={(q) => toggleRow(p.id, q)}
+                  badge={`Pattern ${i + 1}`}
+                  color={highlightColor(i)}
+                />
+              ))}
 
-              {contained.length > 0 ? (
-                contained
-                  .slice()
-                  .sort((a, b) => a.cells.length - b.cells.length)
-                  .map((p) => (
-                    <InstanceList
-                      key={p.id}
-                      pattern={p}
-                      entries={entriesFor(p.id)}
-                      threshold={thresholds.get(p.id) ?? null}
-                      onToggle={(q) => toggleRow(p.id, q)}
-                      badge="Contained"
-                    />
-                  ))
-              ) : (
-                <p className="muted small">
-                  No other patterns are fully contained inside{" "}
-                  {selectedPattern.name}.
-                </p>
-              )}
+              {/* Patterns contained in the browsed one that aren't already shown. */}
+              {contained
+                .filter((p) => !highlightPatterns.some((h) => h.id === p.id))
+                .slice()
+                .sort((a, b) => a.cells.length - b.cells.length)
+                .map((p) => (
+                  <InstanceList
+                    key={p.id}
+                    pattern={p}
+                    entries={entriesFor(p.id)}
+                    threshold={thresholds.get(p.id) ?? null}
+                    onToggle={(q) => toggleRow(p.id, q)}
+                    badge="Contained"
+                  />
+                ))}
+
+              {selectedPattern &&
+                contained.filter(
+                  (p) => !highlightPatterns.some((h) => h.id === p.id)
+                ).length === 0 && (
+                  <p className="muted small">
+                    No other patterns are fully contained inside{" "}
+                    {selectedPattern.name}.
+                  </p>
+                )}
             </div>
           )}
 
@@ -364,6 +424,7 @@ export default function Home() {
               bingoCard={bingoCard}
               built={builtBallCalls}
               forcedNames={forcedNames}
+              daubColors={daubColors}
             />
           </section>
         )}

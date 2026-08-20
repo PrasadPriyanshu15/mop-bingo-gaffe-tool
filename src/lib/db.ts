@@ -167,6 +167,23 @@ export async function findFacadesWithAmount(
 }
 
 /**
+ * FacadeIds that have at least one Award whose amount falls in [lo, hi]. Used to
+ * gate the pattern search to bet lines where a searched range actually occurs.
+ */
+export async function findFacadesWithAmountInRange(
+  h: DbHandle,
+  lo: number,
+  hi: number
+): Promise<number[]> {
+  const { rows } = await h.sqlite3.execWithParams(
+    h.db,
+    "SELECT DISTINCT FacadeId FROM Award WHERE Amount>=? AND Amount<=? ORDER BY FacadeId",
+    [lo, hi]
+  );
+  return rows.map((r: any[]) => Number(r[0]));
+}
+
+/**
  * Distinct award amounts, optionally scoped to a facade and/or an inclusive
  * [lo, hi] amount range. Used by the custom search to list which amounts exist
  * (e.g. everything in 500–1000) before drilling in.
