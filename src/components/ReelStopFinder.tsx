@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Award, DbHandle, Facade } from "@/lib/db";
+import type { DbHandle, DbType, Facade } from "@/lib/db";
 import { parsePattern, patternIsActive } from "@/lib/reelstop";
 import AwardResults, { type AwardResult } from "./AwardResults";
 
@@ -54,6 +54,9 @@ export default function ReelStopFinder({
   const [fileName, setFileName] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "opening" | "ready">("idle");
   const [error, setError] = useState<string | null>(null);
+  // Which schema the file to upload uses (applies to the next file chosen):
+  // type1 = RngValues on Presentation; type2 = RngValues in the Segment table.
+  const [dbType, setDbType] = useState<DbType>("type1");
 
   const [facades, setFacades] = useState<Facade[]>([]);
   const [facadeId, setFacadeId] = useState<number | null>(null);
@@ -106,11 +109,15 @@ export default function ReelStopFinder({
     setError(null);
     setSections(null);
     setStatus("opening");
-    setFileName(`${file.name} (${(file.size / 1024 / 1024).toFixed(0)} MB)`);
+    setFileName(
+      `${file.name} (${(file.size / 1024 / 1024).toFixed(0)} MB · ${
+        dbType === "type2" ? "Type 2" : "Type 1"
+      })`
+    );
     try {
       const db = await import("@/lib/db");
       if (handleRef.current) await db.closeDatabase(handleRef.current);
-      const h = await db.openDatabase(file);
+      const h = await db.openDatabase(file, dbType);
       handleRef.current = h;
       const list = await db.listFacades(h);
       setFacades(list);
@@ -181,6 +188,31 @@ export default function ReelStopFinder({
   return (
     <div className="panel">
       <div className="panel-title">5 · reelStops (from DB)</div>
+
+      <div className="db-type-row">
+        <span className="db-label">DB structure</span>
+        <div className="seg">
+          <button
+            type="button"
+            className={"seg-btn" + (dbType === "type1" ? " on" : "")}
+            onClick={() => setDbType("type1")}
+            disabled={status === "opening"}
+            title="RngValues stored directly on the Presentation table (e.g. HFNG_10k.db)"
+          >
+            Type 1
+          </button>
+          <button
+            type="button"
+            className={"seg-btn" + (dbType === "type2" ? " on" : "")}
+            onClick={() => setDbType("type2")}
+            disabled={status === "opening"}
+            title="RngValues stored in the Segment table, concatenated per presentation (e.g. MMMP.db)"
+          >
+            Type 2
+          </button>
+        </div>
+        <span className="muted small">applies to the file you upload next</span>
+      </div>
 
       <div className="upload-row">
         <button

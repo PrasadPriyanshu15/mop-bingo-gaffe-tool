@@ -27,15 +27,36 @@ export interface Award {
   tier: number;
   amount: number;
   flags: string;
-  startState: string | null;
+  /** Present only in Type 1 databases (Type 2's Award table has no StartState). */
+  startState?: string | null;
   totalCount: number;
   sequenceStart: number;
 }
+
+/**
+ * One reelStop candidate. Type 1 has just the RNG values; Type 2 additionally
+ * carries the PresentationId it was reconstructed from (from concatenated
+ * Segment rows) so the UI can show it.
+ */
+export interface ReelStopCandidate {
+  values: number[];
+  presentationId?: number;
+}
+
+/**
+ * Which outcomes-DB schema the uploaded file uses.
+ *  • "type1": RngValues live directly on the Presentation table (e.g. HFNG_10k).
+ *  • "type2": Presentation only maps to an Award; RngValues live in the Segment
+ *    table, one presentation's RNG split across SegmentIndex 1,2,… rows that are
+ *    concatenated (e.g. MMMP.db).
+ */
+export type DbType = "type1" | "type2";
 
 export interface DbHandle {
   sqlite3: any;
   db: number;
   vfs: any;
+  type: DbType;
 }
 
 /** Read-only VFS that serves a single uploaded File via byte-range reads. */
@@ -110,7 +131,10 @@ function assetBase(): string {
 }
 
 /** Initialise wa-sqlite over the uploaded file and open it read-only. */
-export async function openDatabase(file: File): Promise<DbHandle> {
+export async function openDatabase(
+  file: File,
+  type: DbType = "type1"
+): Promise<DbHandle> {
   const base = assetBase();
   const { default: SQLiteESMFactory } = await nativeImport(
     `${base}/wa-sqlite/wa-sqlite-async.js`
@@ -125,7 +149,7 @@ export async function openDatabase(file: File): Promise<DbHandle> {
 
   const db = await sqlite3.open_v2("main.db", SQLITE_OPEN_READONLY, vfs.name);
   await sqlite3.exec(db, "PRAGMA query_only=1;");
-  return { sqlite3, db, vfs };
+  return { sqlite3, db, vfs, type };
 }
 
 export async function closeDatabase(h: DbHandle): Promise<void> {
@@ -221,6 +245,24 @@ export async function findAwardsByAmount(
   facadeId: number,
   amount: number
 ): Promise<Award[]> {
+  // Type 2's Award table has no StartState column, so select it only for Type 1.
+  if (h.type === "type2") {
+    const { rows } = await h.sqlite3.execWithParams(
+      h.db,
+      "SELECT AwardId,FacadeId,Tier,Amount,Flags,TotalCount,SequenceStart " +
+        "FROM Award WHERE FacadeId=? AND Amount=? ORDER BY AwardId",
+      [facadeId, amount]
+    );
+    return rows.map((r: any[]) => ({
+      awardId: Number(r[0]),
+      facadeId: Number(r[1]),
+      tier: Number(r[2]),
+      amount: Number(r[3]),
+      flags: String(r[4]),
+      totalCount: Number(r[5]),
+      sequenceStart: Number(r[6]),
+    }));
+  }
   const { rows } = await h.sqlite3.execWithParams(
     h.db,
     "SELECT AwardId,FacadeId,Tier,Amount,Flags,StartState,TotalCount,SequenceStart " +
@@ -250,20 +292,22 @@ function parseRng(value: unknown): number[] {
 /**
  * ReelStop candidates for an award. Each award owns a contiguous PresentationId
  * range [SequenceStart, SequenceStart+TotalCount-1], so this is a fast PK-range
- * read — no scan of the 5M-row table.
+ * read — no scan of the 5M-row table. Type 2 reconstructs each presentation's
+ * RNG from the Segment table instead (see getSegmentReelStops).
  */
 export async function getReelStops(
   h: DbHandle,
   award: Award,
   limit = 8
-): Promise<number[][]> {
+): Promise<ReelStopCandidate[]> {
+  if (h.type === "type2") return getSegmentReelStops(h, award, limit, null);
   const hi = award.sequenceStart + award.totalCount - 1;
   const { rows } = await h.sqlite3.execWithParams(
     h.db,
     "SELECT RngValues FROM Presentation WHERE PresentationId BETWEEN ? AND ? LIMIT ?",
     [award.sequenceStart, hi, limit]
   );
-  return rows.map((r: any[]) => parseRng(r[0]));
+  return rows.map((r: any[]) => ({ values: parseRng(r[0]) }));
 }
 
 /**
@@ -279,17 +323,68 @@ export async function findMatchingReelStops(
   award: Award,
   pattern: (number | null)[],
   scanCap = 2000
-): Promise<number[][]> {
+): Promise<ReelStopCandidate[]> {
+  if (h.type === "type2") return getSegmentReelStops(h, award, scanCap, pattern);
   const hi = award.sequenceStart + award.totalCount - 1;
   const { rows } = await h.sqlite3.execWithParams(
     h.db,
     "SELECT RngValues FROM Presentation WHERE PresentationId BETWEEN ? AND ? LIMIT ?",
     [award.sequenceStart, hi, scanCap]
   );
-  const matches: number[][] = [];
+  const matches: ReelStopCandidate[] = [];
   for (const r of rows as any[][]) {
-    const rs = parseRng(r[0]);
-    if (matchesPattern(rs, pattern)) matches.push(rs);
+    const values = parseRng(r[0]);
+    if (matchesPattern(values, pattern)) matches.push({ values });
   }
   return matches;
+}
+
+/**
+ * Type 2 reelStop candidates. An award's presentations are the contiguous
+ * PresentationId range [SequenceStart, SequenceStart+TotalCount-1]; each
+ * presentation's RngValues live in the Segment table, possibly split across
+ * SegmentIndex 1,2,… rows. This reads the first `maxPresentations` presentations
+ * of that range in one indexed Segment scan, groups by presentation, and
+ * concatenates each group's RngValues in SegmentIndex order to reconstruct the
+ * full RNG. When `pattern` is set, only concatenated candidates matching it are
+ * kept.
+ */
+async function getSegmentReelStops(
+  h: DbHandle,
+  award: Award,
+  maxPresentations: number,
+  pattern: (number | null)[] | null
+): Promise<ReelStopCandidate[]> {
+  const start = award.sequenceStart;
+  const rangeHi = start + award.totalCount - 1;
+  // Bound the scan to the first N presentations (each has few segments), so the
+  // display cap / scanCap translates into a small PresentationId sub-range.
+  const hi = Math.min(rangeHi, start + maxPresentations - 1);
+  const { rows } = await h.sqlite3.execWithParams(
+    h.db,
+    "SELECT PresentationId,SegmentIndex,RngValues FROM Segment " +
+      "WHERE PresentationId BETWEEN ? AND ? ORDER BY PresentationId,SegmentIndex",
+    [start, hi]
+  );
+  // Group segments per presentation, preserving SegmentIndex order (the query
+  // sorts by it), then concatenate each group's comma-separated RngValues.
+  const byPid = new Map<number, string[]>();
+  const order: number[] = [];
+  for (const r of rows as any[][]) {
+    const pid = Number(r[0]);
+    let arr = byPid.get(pid);
+    if (!arr) {
+      arr = [];
+      byPid.set(pid, arr);
+      order.push(pid);
+    }
+    arr.push(String(r[2] ?? ""));
+  }
+  const out: ReelStopCandidate[] = [];
+  for (const pid of order) {
+    const values = parseRng(byPid.get(pid)!.join(","));
+    if (pattern && !matchesPattern(values, pattern)) continue;
+    out.push({ values, presentationId: pid });
+  }
+  return out;
 }

@@ -9,8 +9,63 @@ import {
 import type { DbHandle, Facade } from "@/lib/db";
 import type { MatchingPattern, Pattern, Paytable59 } from "@/lib/types";
 import { parsePattern, patternIsActive } from "@/lib/reelstop";
-import { patternContains } from "@/lib/patterns";
+import { patternContains, cardBallCallBase } from "@/lib/patterns";
+import { buildBallCalls, patternDaubNumbers } from "@/lib/gaffe";
+import { evaluateInGame, type PatternWin } from "@/lib/evaluate";
 import AwardResults, { type AwardResult } from "./AwardResults";
+
+/**
+ * True AllPatternsPaid payout for a set of chosen pattern thresholds at one bet
+ * line, on the current card. Mirrors what the main tool computes for the built
+ * gaffe, so a match/combo can be flagged when its real in-game total differs
+ * from the naive suffix-sum the search matched on (extra patterns completed by
+ * the combined daubs also win).
+ */
+function inGameFor(
+  selections: { patternId: number; ballQty: number }[],
+  entries: MatchingPattern[],
+  patterns: Pattern[],
+  patternById: Map<number, Pattern>,
+  bingoCard: number[][]
+): { total: number; extras: PatternWin[] } {
+  const qByValue = new Map<number, number>();
+  for (const s of selections) {
+    const p = patternById.get(s.patternId);
+    if (!p) continue;
+    for (const n of patternDaubNumbers(p, bingoCard)) {
+      qByValue.set(n, Math.min(qByValue.get(n) ?? Infinity, s.ballQty));
+    }
+  }
+  const daubs = [...qByValue].map(([value, q]) => ({ value, q }));
+  const calls = buildBallCalls(cardBallCallBase(bingoCard), daubs).calls;
+  const entriesByPattern = new Map<number, MatchingPattern[]>();
+  for (const e of entries) {
+    const arr = entriesByPattern.get(e.patternId);
+    if (arr) arr.push(e);
+    else entriesByPattern.set(e.patternId, [e]);
+  }
+  const res = evaluateInGame(
+    calls,
+    bingoCard,
+    patterns,
+    entriesByPattern,
+    new Set(selections.map((s) => s.patternId))
+  );
+  return { total: res.total, extras: res.extras };
+}
+
+/** Tooltip listing the incidental in-game wins for a match/combo. */
+function extrasTitle(extras: PatternWin[]): string {
+  return (
+    "Also won in-game (AllPatternsPaid):\n" +
+    extras
+      .map(
+        (e) =>
+          `${e.patternName} #${e.patternId} · ${e.completionBall} balls · ${e.payout.toLocaleString()}`
+      )
+      .join("\n")
+  );
+}
 
 export interface DbAmountSearchHandle {
   /** Open the panel, set the reelStop filter, and run the search. */
@@ -22,6 +77,8 @@ interface Props {
   facades: Facade[];
   /** Parsed paytable XML — used to find which patterns pay a given amount. */
   data: Paytable59 | null;
+  /** Current bingo card — used to compute each match's true in-game payout. */
+  bingoCard: number[][];
   /** Push a chosen reelStop candidate into the main generated gaffe output. */
   onApply: (reelStops: number[]) => void;
   /** Prefill section 4 by selecting this pattern/ballQty at this bet line. */
@@ -55,6 +112,10 @@ interface PatternMatch {
   total: number;
   /** How many higher-ballQty rows are auto-included on top of this one. */
   autoCount: number;
+  /** True AllPatternsPaid payout on the current card (>= total when extras win). */
+  inGameTotal: number;
+  /** Extra patterns completed by this selection's daubs (also paid in-game). */
+  extras: PatternWin[];
 }
 
 /** One pattern's chosen threshold inside a combination. */
@@ -80,6 +141,10 @@ interface PatternCombo {
   total: number;
   /** True when a member is geometrically contained in another (pattern + sub). */
   hasSubPattern: boolean;
+  /** True AllPatternsPaid payout on the current card (>= total when extras win). */
+  inGameTotal: number;
+  /** Extra patterns completed by the combined daubs (also paid in-game). */
+  extras: PatternWin[];
 }
 
 /** Max distinct patterns per combination, and a cap on results collected. */
@@ -154,6 +219,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       handle,
       facades,
       data,
+      bingoCard,
       onApply,
       onCreatePattern,
       onCreatePatterns,
@@ -361,6 +427,11 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       return;
     }
 
+    // Pattern lookup shared by the single-match and combination in-game scoring.
+    const patternByIdAll = new Map<number, Pattern>(
+      data.patterns.map((p) => [p.id, p])
+    );
+
     const matches: PatternMatch[] = [];
     for (const pt of tables) {
       // Group this bet level's rows by pattern.
@@ -384,6 +455,13 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
         }
         for (let i = 0; i < arr.length; i++) {
           if (suffixSums[i] >= lo && suffixSums[i] <= hi) {
+            const ig = inGameFor(
+              [{ patternId: pid, ballQty: arr[i].ballQty }],
+              pt.entries,
+              data.patterns,
+              patternByIdAll,
+              bingoCard
+            );
             matches.push({
               facadeKey: pt.facadeKey,
               patternId: pid,
@@ -393,6 +471,8 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
               payout: arr[i].payout,
               total: suffixSums[i],
               autoCount: arr.length - 1 - i,
+              inGameTotal: ig.total,
+              extras: ig.extras,
             });
           }
         }
@@ -405,9 +485,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     // Combinations of 2..3 distinct patterns at ONE bet line whose totals land in
     // [lo, hi] (a single amount is just lo === hi). Shown alongside the single-
     // pattern matches and split by size / sub-pattern relationship in the tabs.
-    const patternById = new Map<number, Pattern>(
-      data.patterns.map((p) => [p.id, p])
-    );
+    const patternById = patternByIdAll;
     const found: PatternCombo[] = [];
     const seen = new Set<string>();
     let capped = false;
@@ -475,7 +553,21 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
             }
           }
         }
-        found.push({ facadeKey: pt.facadeKey, members, total: sum, hasSubPattern });
+        const ig = inGameFor(
+          members.map((m) => ({ patternId: m.patternId, ballQty: m.ballQty })),
+          pt.entries,
+          data.patterns,
+          patternByIdAll,
+          bingoCard
+        );
+        found.push({
+          facadeKey: pt.facadeKey,
+          members,
+          total: sum,
+          hasSubPattern,
+          inGameTotal: ig.total,
+          extras: ig.extras,
+        });
         if (found.length >= MAX_COMBOS) {
           capped = true;
           return false;
@@ -737,6 +829,12 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
                                 ? ` · ${m.payout.toLocaleString()} + ${m.autoCount} auto`
                                 : ""}
                             </span>
+                            {m.extras.length > 0 && (
+                              <span className="ingame-flag" title={extrasTitle(m.extras)}>
+                                in-game {m.inGameTotal.toLocaleString()} · +
+                                {m.extras.length} also won
+                              </span>
+                            )}
                           </div>
                           <button
                             type="button"
@@ -774,6 +872,15 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
                               <span className="pattern-match-amount">
                                 {c.total.toLocaleString()}
                               </span>
+                              {c.extras.length > 0 && (
+                                <span
+                                  className="ingame-flag"
+                                  title={extrasTitle(c.extras)}
+                                >
+                                  in-game {c.inGameTotal.toLocaleString()} · +
+                                  {c.extras.length} also won
+                                </span>
+                              )}
                             </span>
                             <button
                               type="button"

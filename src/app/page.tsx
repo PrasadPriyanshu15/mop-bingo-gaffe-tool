@@ -25,6 +25,7 @@ import {
   highlightColor,
 } from "@/lib/patterns";
 import { buildBallCalls, patternDaubNumbers, type Daub } from "@/lib/gaffe";
+import { evaluateInGame } from "@/lib/evaluate";
 import { SAMPLE_GAFFE } from "@/lib/sample";
 import type { MatchingPattern, Pattern, Paytable59 } from "@/lib/types";
 
@@ -208,20 +209,9 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thresholds, paytable, data]);
 
-  const totalPayout = useMemo(
+  // Sum of only the rows the user explicitly picked (shown as a subtotal).
+  const selectedSubtotal = useMemo(
     () => effectiveRows.reduce((sum, r) => sum + r.payout, 0),
-    [effectiveRows]
-  );
-
-  // One "win" per selected payout row — lets the DB finder look up each win's
-  // payout separately instead of only the summed total.
-  const wins = useMemo<Win[]>(
-    () =>
-      effectiveRows.map((r) => ({
-        key: r.key,
-        label: `${r.patternName} · ${r.ballQty} balls (${r.payout.toLocaleString()})`,
-        payout: r.payout,
-      })),
     [effectiveRows]
   );
 
@@ -260,6 +250,47 @@ export default function Home() {
   const builtBallCalls = useMemo(
     () => buildBallCalls(ballCallBase, daubs),
     [ballCallBase, daubs]
+  );
+
+  // True in-game payout (AllPatternsPaid): score the generated draw order so the
+  // total includes every pattern the machine would pay — including ones completed
+  // only by the union of the selected patterns' daubs. This is what the game
+  // shows, so it drives the total payout and the DB reelStop lookup.
+  const inGame = useMemo(() => {
+    if (!data || !paytable) {
+      return { total: 0, wins: [], extras: [] };
+    }
+    const entriesByPattern = new Map<number, MatchingPattern[]>();
+    for (const e of paytable.entries) {
+      const arr = entriesByPattern.get(e.patternId);
+      if (arr) arr.push(e);
+      else entriesByPattern.set(e.patternId, [e]);
+    }
+    return evaluateInGame(
+      builtBallCalls.calls,
+      bingoCard,
+      data.patterns,
+      entriesByPattern,
+      new Set(thresholds.keys())
+    );
+  }, [data, paytable, builtBallCalls, bingoCard, thresholds]);
+
+  // The total payout is the real in-game amount, so downstream (DB search, wins)
+  // reflect what the machine pays rather than only the hand-picked rows.
+  const totalPayout = inGame.total;
+
+  // One "win" per paying pattern (selected or incidental) so the DB finder can
+  // look up each win's payout separately, not just the summed total.
+  const wins = useMemo<Win[]>(
+    () =>
+      inGame.wins.map((w) => ({
+        key: String(w.patternId),
+        label: `${w.patternName} · ${w.completionBall} balls (${w.payout.toLocaleString()})${
+          w.selected ? "" : " · also won"
+        }`,
+        payout: w.payout,
+      })),
+    [inGame]
   );
 
   const gaffeJson = useMemo(
@@ -325,6 +356,7 @@ export default function Home() {
               handle={dbHandle}
               facades={dbFacades}
               data={data}
+              bingoCard={bingoCard}
               onApply={setReelStops}
               onCreatePattern={createPatternFromMatch}
               onCreatePatterns={createPatternsFromMatch}
@@ -415,6 +447,9 @@ export default function Home() {
 
             <SelectionSummary
               rows={effectiveRows}
+              selectedSubtotal={selectedSubtotal}
+              inGameTotal={inGame.total}
+              extras={inGame.extras}
               onRemove={clearPattern}
               onClear={() => setThresholds(new Map())}
             />

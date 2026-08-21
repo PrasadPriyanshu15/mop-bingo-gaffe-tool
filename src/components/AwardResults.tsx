@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { Award } from "@/lib/db";
+import type { Award, ReelStopCandidate } from "@/lib/db";
 import { matchesPattern, parsePattern, patternIsActive } from "@/lib/reelstop";
 
 export interface AwardResult {
   award: Award;
   facadeKey: string;
-  reelStops: number[][];
+  reelStops: ReelStopCandidate[];
 }
 
 interface Props {
@@ -85,7 +85,7 @@ export default function AwardResults({
       award,
       facadeKey,
       shown: filterActive
-        ? reelStops.filter((rs) => matchesPattern(rs, parsed))
+        ? reelStops.filter((c) => matchesPattern(c.values, parsed))
         : reelStops,
     }))
     .filter((c) => !(hideEmpty && filterActive) || c.shown.length > 0);
@@ -135,10 +135,19 @@ export default function AwardResults({
 
             {open && !isEmpty && (
               <div className="reelstop-list">
-                {shown.map((rs, i) => {
+                {shown.map((cand, i) => {
+                  const rs = cand.values;
                   const text = `[${rs.join(",")}]`;
                   return (
                     <div key={i} className="reelstop">
+                      {cand.presentationId != null && (
+                        <span
+                          className="reelstop-pid"
+                          title="PresentationId"
+                        >
+                          P#{cand.presentationId}
+                        </span>
+                      )}
                       <span className="reelstop-vals">{text}</span>
                       <button
                         type="button"

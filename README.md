@@ -40,6 +40,20 @@ Selection is a **per-pattern cascade**: clicking a payout row selects it and eve
 higher-ball-qty row of that pattern (marked "auto"), and their payouts sum. Contained
 patterns are selected manually — only then do their daubs enter `ballCalls`.
 
+### True in-game payout (AllPatternsPaid)
+
+The machine pays **every** pattern whose cells all get daubed by the generated
+`ballCalls`, not only the ones you picked — including patterns completed solely by
+the **union** of several selected patterns' daubs (e.g. `Arrowhead + Champagne
+Glass` also complete `Cross` and `Letter Y`). So the tool replays the generated
+draw order and scores each pattern the way the game does: a pattern completes at
+the ball where its last needed number is drawn and pays the sum of its rows with
+`BallQty ≥ that ball` (0 if it finishes after its slowest tier). The **selected
+outcomes** panel shows both the *selected subtotal* and the true *in-game total*,
+listing any incidental "also won" patterns; that in-game total is what drives the
+DB reelStop lookup. The DB pattern/combination search flags any match whose real
+in-game payout exceeds its searched amount.
+
 ### Data model notes
 
 - `PatternMap` is a 25-char row-major 5×5 string: `0` empty, `1` marked, `2` free-space
@@ -61,6 +75,22 @@ file is never fully loaded into memory. Pick a facade, and for the current total
 payout it looks up `Award` rows (`AwardIndex(FacadeId, Amount, …)`) and shows their
 reelStops (`Presentation.RngValues`, fetched by the award's contiguous
 `PresentationId` range) as copyable candidates. Nothing is uploaded to a server.
+
+Before choosing the file, pick the **DB structure** (Type 1 / Type 2) — the two
+vendor schemas store reelStops differently:
+
+- **Type 1** (e.g. `HFNG_10k.db`): each `Award` owns a contiguous `PresentationId`
+  range (`SequenceStart`..`SequenceStart+TotalCount-1`) and `Presentation.RngValues`
+  holds the reelStops directly.
+- **Type 2** (e.g. `MMMP.db`): `Facade` → `Award` (no `StartState` column) →
+  `Presentation` (which only maps to an `Award`) → `Segment`. A presentation's RNG
+  lives in the `Segment` table and may be split across `SegmentIndex` 1,2,… rows,
+  which are **concatenated in index order** to reconstruct the full RNG. Each
+  candidate shows its `PresentationId` (`P#…`). The award range still comes from
+  `SequenceStart`/`TotalCount`, so lookups stay indexed PK-range reads.
+
+Both share the same `Facade`/`Award` lookup by facade + amount, so the pattern
+search, amount search and per-win breakdown work identically for either type.
 
 The `.db` is never committed (`.gitignore` excludes `*.db` — it also exceeds GitHub's
 file-size limit). The wa-sqlite runtime lives in `public/wa-sqlite/` and loads lazily
