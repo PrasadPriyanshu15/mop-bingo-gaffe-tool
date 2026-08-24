@@ -9,8 +9,13 @@ interface Props {
 }
 
 function label(p: Paytable): string {
-  const bet = Number.isNaN(p.betPerLine) ? "?" : p.betPerLine;
-  return `BetPerLine ${bet} — ${p.minCredits} credits`;
+  const credits = p.minCredits ? ` — ${p.minCredits} credits` : "";
+  // Old style: "Lines_20_BetPerLine_2" → parse a BetPerLine number to label.
+  if (!Number.isNaN(p.betPerLine)) {
+    return `BetPerLine ${p.betPerLine}${credits}`;
+  }
+  // Type-2 style facade keys (e.g. "D1_B1") — show the key itself.
+  return `${p.facadeKey}${credits}`;
 }
 
 /** Dropdown of the (up to) 10 bet levels. Required before downstream steps. */

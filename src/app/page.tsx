@@ -74,6 +74,15 @@ export default function Home() {
     [data, patternId]
   );
 
+  // Patterns actually referenced by the selected bet line — the pattern picker is
+  // scoped to these (only the patterns present in that facade), not every pattern
+  // the file defines.
+  const betLinePatterns = useMemo(() => {
+    if (!data || !paytable) return [];
+    const ids = new Set(paytable.entries.map((e) => e.patternId));
+    return data.patterns.filter((p) => ids.has(p.id));
+  }, [data, paytable]);
+
   // Geometrically-contained ("also won") sub-patterns only matter for
   // AllPatternsPaid. HighestPriorityPaid games pay a single pattern and define
   // thousands of full-outcome patterns, so a selected outcome would "contain"
@@ -355,7 +364,7 @@ export default function Home() {
 
           {canPick && (
             <PatternSelect
-              patterns={data.patterns}
+              patterns={betLinePatterns}
               selectedId={patternId}
               onSelect={setPatternId}
             />

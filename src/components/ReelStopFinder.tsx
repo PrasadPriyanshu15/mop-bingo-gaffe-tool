@@ -199,7 +199,7 @@ export default function ReelStopFinder({
             disabled={status === "opening"}
             title="RngValues stored directly on the Presentation table (e.g. HFNG_10k.db)"
           >
-            Type 1
+            APP Game
           </button>
           <button
             type="button"
@@ -208,7 +208,7 @@ export default function ReelStopFinder({
             disabled={status === "opening"}
             title="RngValues stored in the Segment table, concatenated per presentation (e.g. MMMP.db)"
           >
-            Type 2
+            HPP Game
           </button>
         </div>
         <span className="muted small">applies to the file you upload next</span>
