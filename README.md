@@ -23,7 +23,15 @@ npm run dev        # http://localhost:3000
    `2` in the map), and within each bet line the `EvaluationPriority` values must
    ascend by exactly +1. Any mismatch is listed by pattern id/name or by facade +
    entry index; a clean file shows a "valid" note.
-2. **Select a bet level** (`BetPerLine 1..10`). All downstream data is scoped to it.
+2. *(Optional)* **Compare with WebSocket data** — paste the game-info WebSocket
+   payload (which carries every denomination), pick a denom, and the tool compares
+   that denom's paytable against the loaded XML. Rows are paired by pattern id +
+   ball qty per bet line and **payout** is compared; only **mismatches** (payout
+   differences, plus entries missing on one side — which is how a ball-qty
+   difference surfaces) are shown, grouped per bet line in collapsible sections.
+   The comparison engine is adapted from a sibling project (see `public/ref/`).
+   Purely informational — you can skip it and proceed with the XML.
+3. **Select a bet level** (`BetPerLine 1..10`). All downstream data is scoped to it.
 3. **Select a pattern** (searchbar + list with mini images).
 4. The **bingo card** highlights the pattern's cells (center = free space).
 5. The **payouts** panel lists that pattern's instances (by ball qty) plus every

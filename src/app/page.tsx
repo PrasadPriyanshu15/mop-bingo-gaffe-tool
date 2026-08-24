@@ -19,6 +19,7 @@ import ReelStripViewer, {
 } from "@/components/ReelStripViewer";
 import ResultJson from "@/components/ResultJson";
 import PaytableIssues from "@/components/PaytableIssues";
+import WebsocketCompare from "@/components/WebsocketCompare";
 import { validatePaytable } from "@/lib/validatePaytable";
 import type { DbHandle, Facade } from "@/lib/db";
 import {
@@ -341,6 +342,8 @@ export default function Home() {
           <XmlUpload onLoaded={handleLoaded} loadedName={loadedName} />
 
           {ready && issues && <PaytableIssues issues={issues} />}
+
+          {ready && data && <WebsocketCompare data={data} />}
 
           {ready && (
             <BetLevelSelect

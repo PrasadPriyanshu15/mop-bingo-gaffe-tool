@@ -18,9 +18,9 @@ export default function PaytableIssues({ issues }: { issues: Issues }) {
   if (total === 0) {
     return (
       <div className="panel">
-        <div className="panel-title">XML validation</div>
+        <div className="panel-title">XML file validation</div>
         <p className="muted small">
-          ✓ Free spaces and evaluation priorities look valid.
+          ✅ Free spaces and evaluation priorities look valid.
         </p>
       </div>
     );

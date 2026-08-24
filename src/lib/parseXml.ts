@@ -79,6 +79,11 @@ function parsePaytables(doc: Document): Paytable[] {
     const betMatch = facadeKey.match(/BetPerLine_(\d+)/);
     const betPerLine = betMatch ? Number(betMatch[1]) : NaN;
 
+    // Newer paytables carry an explicit betMultiplier attribute (e.g. 44507).
+    const betMultRaw = node.getAttribute("betMultiplier");
+    const betMultiplier =
+      betMultRaw != null && betMultRaw !== "" ? Number(betMultRaw) : undefined;
+
     const entries: MatchingPattern[] = Array.from(
       node.querySelectorAll("MatchingPatterns MatchingPattern")
     ).map((m) => ({
@@ -89,7 +94,7 @@ function parsePaytables(doc: Document): Paytable[] {
       evaluationPriority: Number(m.getAttribute("EvaluationPriority")),
     }));
 
-    return { facadeKey, minCredits, maxCredits, betPerLine, entries };
+    return { facadeKey, minCredits, maxCredits, betPerLine, betMultiplier, entries };
   });
 }
 

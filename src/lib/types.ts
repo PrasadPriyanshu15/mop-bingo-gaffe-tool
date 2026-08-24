@@ -31,6 +31,8 @@ export interface Paytable {
   maxCredits: number;
   /** Bet-per-line multiplier parsed from the facade key (1..10). */
   betPerLine: number;
+  /** `betMultiplier` attribute when present (newer paytables, e.g. 44507). */
+  betMultiplier?: number;
   entries: MatchingPattern[];
 }
 
