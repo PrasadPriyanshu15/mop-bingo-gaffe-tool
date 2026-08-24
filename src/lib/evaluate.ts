@@ -48,7 +48,8 @@ export function evaluateInGame(
   bingoCard: number[][],
   patterns: Pattern[],
   entriesByPattern: Map<number, MatchingPattern[]>,
-  selectedIds: Set<number>
+  selectedIds: Set<number>,
+  highestPriorityPaid = false
 ): InGameResult {
   const posByValue = new Map<number, number>();
   for (let i = 0; i < calls.length; i++) posByValue.set(calls[i], i + 1);
@@ -84,6 +85,32 @@ export function evaluateInGame(
       payout,
       selected: selectedIds.has(p.id),
     });
+  }
+
+  // HighestPriorityPaid: only the single highest-priority satisfied pattern pays
+  // (lowest EvaluationPriority number wins), never the sum of all completions.
+  if (highestPriorityPaid && wins.length > 0) {
+    const priorityOf = (patternId: number): number => {
+      const rows = entriesByPattern.get(patternId);
+      if (!rows || rows.length === 0) return Number.POSITIVE_INFINITY;
+      let min = Number.POSITIVE_INFINITY;
+      for (const r of rows) if (r.evaluationPriority < min) min = r.evaluationPriority;
+      return min;
+    };
+    let best = wins[0];
+    let bestPriority = priorityOf(best.patternId);
+    for (const w of wins) {
+      const pr = priorityOf(w.patternId);
+      if (pr < bestPriority) {
+        best = w;
+        bestPriority = pr;
+      }
+    }
+    return {
+      total: best.payout,
+      wins: [best],
+      extras: best.selected ? [] : [best],
+    };
   }
 
   wins.sort(

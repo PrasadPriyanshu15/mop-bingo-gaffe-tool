@@ -39,6 +39,13 @@ export interface Paytable59 {
   gameId: string;
   patterns: Pattern[];
   paytables: Paytable[];
+  /**
+   * Bingo evaluation mode from <Bingo><EvaluationType>, e.g. "AllPatternsPaid"
+   * or "HighestPriorityPaid". In HighestPriorityPaid games only the single
+   * highest-priority satisfied pattern pays (never a combination), so pattern
+   * combinations and union-completion totals do not apply.
+   */
+  evaluationType?: string;
 }
 
 /** A gaffe result structure (only bingoCard + ballCalls used this phase). */

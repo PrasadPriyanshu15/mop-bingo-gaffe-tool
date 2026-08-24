@@ -397,6 +397,12 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     let tables = showFacade
       ? data.paytables
       : data.paytables.filter((p) => p.facadeKey === selKey);
+    if (!showFacade && tables.length === 0) {
+      // The selected DB facade's key doesn't match any XML bet-line key (Type 2
+      // convention mismatch, e.g. "D10_B1" vs "75_B1_FG3"), so it can't be scoped
+      // to a single bet line — consider all XML bet lines instead of none.
+      tables = data.paytables;
+    }
 
     // Gate by the .db: only keep bet lines that actually have an Award for this
     // amount/range, so pattern results reflect real outcomes (not just what the
@@ -413,7 +419,19 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
           .filter((f) => presentIds.includes(f.facadeId))
           .map((f) => f.facadeKey)
       );
-      tables = tables.filter((t) => presentKeys.has(t.facadeKey));
+      const gated = tables.filter((t) => presentKeys.has(t.facadeKey));
+      if (gated.length > 0) {
+        // The DB's facade keys line up with the XML bet lines (typical Type 1):
+        // keep only the bet lines the DB actually has this amount for.
+        tables = gated;
+      } else if (presentIds.length === 0) {
+        // The amount/range doesn't exist anywhere in the DB.
+        tables = [];
+      }
+      // else: the amount exists in the DB but under a different facade-key
+      // convention than the XML (common for Type 2 DBs, e.g. "D10_B1" vs
+      // "75_B1_FG3"), so the keys can't be matched up. Fall back to the selected
+      // XML bet line(s) ungated rather than showing nothing.
     } catch (e) {
       setError(e instanceof Error ? e.message : "DB lookup failed.");
       return;
@@ -431,6 +449,13 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     const patternByIdAll = new Map<number, Pattern>(
       data.patterns.map((p) => [p.id, p])
     );
+
+    // HighestPriorityPaid games pay only the single highest-priority satisfied
+    // pattern — never a combination, and no "also won" union completion. Skip the
+    // combination search (which is also what would otherwise churn through the
+    // hundreds of unique patterns these games define and stall the panel), and
+    // don't compute an inflated in-game total per match.
+    const highestPriority = data.evaluationType === "HighestPriorityPaid";
 
     const matches: PatternMatch[] = [];
     for (const pt of tables) {
@@ -455,13 +480,15 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
         }
         for (let i = 0; i < arr.length; i++) {
           if (suffixSums[i] >= lo && suffixSums[i] <= hi) {
-            const ig = inGameFor(
-              [{ patternId: pid, ballQty: arr[i].ballQty }],
-              pt.entries,
-              data.patterns,
-              patternByIdAll,
-              bingoCard
-            );
+            const ig = highestPriority
+              ? { total: suffixSums[i], extras: [] as PatternWin[] }
+              : inGameFor(
+                  [{ patternId: pid, ballQty: arr[i].ballQty }],
+                  pt.entries,
+                  data.patterns,
+                  patternByIdAll,
+                  bingoCard
+                );
             matches.push({
               facadeKey: pt.facadeKey,
               patternId: pid,
@@ -490,6 +517,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     const seen = new Set<string>();
     let capped = false;
 
+    if (!highestPriority)
     outer: for (const pt of tables) {
       // Per pattern, the candidate thresholds whose total is still <= hi
       // (a pattern contributes its suffix-sum total, same as the single search).

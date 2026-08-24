@@ -38,7 +38,10 @@ export function parsePaytableXml(xml: string): Paytable59 {
     throw new Error("No <Paytable> entries found under <Paytables>.");
   }
 
-  return { gameId, patterns, paytables };
+  const evaluationType =
+    doc.querySelector("Bingo EvaluationType")?.textContent?.trim() || undefined;
+
+  return { gameId, patterns, paytables, evaluationType };
 }
 
 function parsePatterns(doc: Document): Pattern[] {

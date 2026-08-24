@@ -162,6 +162,47 @@ body {
   margin-bottom: 10px;
 }
 
+/* XML validation report --------------------------------------------------- */
+.issue-badge {
+  background: rgba(255, 107, 107, 0.16);
+  color: #ff6b6b;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.issue-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.issue-group-head {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ff9f43;
+  margin-bottom: 4px;
+}
+.issue-list {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--text);
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.issue-list li {
+  line-height: 1.35;
+}
+.issue-id {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  color: var(--muted);
+}
+
 .select,
 .search {
   width: 100%;

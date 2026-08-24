@@ -17,7 +17,9 @@ import DbAmountSearch, {
 import ReelStripViewer, {
   type ReelStripHandle,                                     
 } from "@/components/ReelStripViewer";
-import ResultJson from "@/components/ResultJson";                             
+import ResultJson from "@/components/ResultJson";
+import PaytableIssues from "@/components/PaytableIssues";
+import { validatePaytable } from "@/lib/validatePaytable";
 import type { DbHandle, Facade } from "@/lib/db";
 import {
   containedPatterns,
@@ -60,14 +62,25 @@ export default function Home() {
     [data, betKey]
   );
 
+  // Upload-time validation report (free-space placement + EvaluationPriority).
+  const issues = useMemo(
+    () => (data ? validatePaytable(data) : null),
+    [data]
+  );
+
   const selectedPattern = useMemo(
     () => data?.patterns.find((p) => p.id === patternId) ?? null,
     [data, patternId]
   );
 
+  // Geometrically-contained ("also won") sub-patterns only matter for
+  // AllPatternsPaid. HighestPriorityPaid games pay a single pattern and define
+  // thousands of full-outcome patterns, so a selected outcome would "contain"
+  // hundreds of them — computing and rendering an InstanceList for each would
+  // freeze the page. Skip containment entirely for those games.
   const contained = useMemo(
     () =>
-      selectedPattern && data
+      selectedPattern && data && data.evaluationType !== "HighestPriorityPaid"
         ? containedPatterns(selectedPattern, data.patterns)
         : [],
     [selectedPattern, data]
@@ -271,7 +284,8 @@ export default function Home() {
       bingoCard,
       data.patterns,
       entriesByPattern,
-      new Set(thresholds.keys())
+      new Set(thresholds.keys()),
+      data.evaluationType === "HighestPriorityPaid"
     );
   }, [data, paytable, builtBallCalls, bingoCard, thresholds]);
 
@@ -325,6 +339,8 @@ export default function Home() {
       <div className="layout">
         <section className="col-controls">
           <XmlUpload onLoaded={handleLoaded} loadedName={loadedName} />
+
+          {ready && issues && <PaytableIssues issues={issues} />}
 
           {ready && (
             <BetLevelSelect

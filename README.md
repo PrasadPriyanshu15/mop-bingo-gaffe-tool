@@ -17,7 +17,12 @@ npm run dev        # http://localhost:3000
 
 ## How to use
 
-1. **Upload** a VGTPaytable XML (e.g. `59304.xml`).
+1. **Upload** a VGTPaytable XML (e.g. `59304.xml`). An **XML validation** panel
+   then reports two authoring checks: every pattern must mark the center free
+   space as `2` at index 12 **or** declare `<FreeSpace>12</FreeSpace>` (with no
+   `2` in the map), and within each bet line the `EvaluationPriority` values must
+   ascend by exactly +1. Any mismatch is listed by pattern id/name or by facade +
+   entry index; a clean file shows a "valid" note.
 2. **Select a bet level** (`BetPerLine 1..10`). All downstream data is scoped to it.
 3. **Select a pattern** (searchbar + list with mini images).
 4. The **bingo card** highlights the pattern's cells (center = free space).
@@ -53,6 +58,15 @@ outcomes** panel shows both the *selected subtotal* and the true *in-game total*
 listing any incidental "also won" patterns; that in-game total is what drives the
 DB reelStop lookup. The DB pattern/combination search flags any match whose real
 in-game payout exceeds its searched amount.
+
+This union/combination behavior applies only to **AllPatternsPaid** games. The
+tool reads `<Bingo><EvaluationType>` from the XML: for **HighestPriorityPaid**
+games only the single highest-priority satisfied pattern pays (lowest
+`EvaluationPriority`), so the in-game total is that one pattern's payout, and the
+DB amount search skips the combination search entirely and shows only
+single-pattern matches. (These games also tend to define hundreds of distinct
+patterns per bet line; skipping combinations there is both correct and keeps the
+pattern search responsive.)
 
 ### Data model notes
 
