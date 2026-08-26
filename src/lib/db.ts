@@ -44,6 +44,24 @@ export interface ReelStopCandidate {
 }
 
 /**
+ * Optional inclusive bound on a candidate's reconstructed RNG length (HPP /
+ * Type 2 only). `min`/`max` are each nullable: a single "300" becomes
+ * `{min:null,max:300}` (≤ 300), a range "100-300" becomes `{min:100,max:300}`.
+ */
+export interface RngLenFilter {
+  min: number | null;
+  max: number | null;
+}
+
+/** True when `len` satisfies the (optional) RNG-length bound. */
+function rngLenOk(len: number, f: RngLenFilter | null): boolean {
+  if (!f) return true;
+  if (f.min != null && len < f.min) return false;
+  if (f.max != null && len > f.max) return false;
+  return true;
+}
+
+/**
  * Which outcomes-DB schema the uploaded file uses.
  *  • "type1": RngValues live directly on the Presentation table (e.g. HFNG_10k).
  *  • "type2": Presentation only maps to an Award; RngValues live in the Segment
@@ -256,9 +274,11 @@ export async function listAmounts(
 export async function findMinMaxAmount(
   h: DbHandle,
   facadeId: number,
-  pattern: (number | null)[] | null
+  pattern: (number | null)[] | null,
+  rngLen: RngLenFilter | null = null
 ): Promise<{ min: number; max: number } | null> {
-  const active = pattern != null && pattern.some((v) => v != null);
+  const active =
+    (pattern != null && pattern.some((v) => v != null)) || rngLen != null;
   if (!active) {
     const { rows } = await h.sqlite3.execWithParams(
       h.db,
@@ -273,7 +293,7 @@ export async function findMinMaxAmount(
   const amounts = await listAmounts(h, facadeId, null, null);
   let min: number | null = null;
   for (let i = 0; i < amounts.length; i++) {
-    if (await awardMatchesPattern(h, facadeId, amounts[i], pattern!)) {
+    if (await awardMatchesPattern(h, facadeId, amounts[i], pattern, rngLen)) {
       min = amounts[i];
       break;
     }
@@ -281,7 +301,7 @@ export async function findMinMaxAmount(
   if (min == null) return null; // nothing matched at all
   let max = min;
   for (let i = amounts.length - 1; i >= 0 && amounts[i] > min; i--) {
-    if (await awardMatchesPattern(h, facadeId, amounts[i], pattern!)) {
+    if (await awardMatchesPattern(h, facadeId, amounts[i], pattern, rngLen)) {
       max = amounts[i];
       break;
     }
@@ -297,11 +317,12 @@ async function awardMatchesPattern(
   h: DbHandle,
   facadeId: number,
   amount: number,
-  pattern: (number | null)[]
+  pattern: (number | null)[] | null,
+  rngLen: RngLenFilter | null = null
 ): Promise<boolean> {
   const awards = await findAwardsByAmount(h, facadeId, amount);
   for (const award of awards) {
-    const rs = await findMatchingReelStops(h, award, pattern);
+    const rs = await findMatchingReelStops(h, award, pattern ?? [], 2000, rngLen);
     if (rs.length > 0) return true;
   }
   return false;
@@ -317,14 +338,16 @@ export async function listAmountsMatchingPattern(
   facadeId: number,
   lo: number | null,
   hi: number | null,
-  pattern: (number | null)[] | null
+  pattern: (number | null)[] | null,
+  rngLen: RngLenFilter | null = null
 ): Promise<number[]> {
   const amounts = await listAmounts(h, facadeId, lo, hi);
-  const active = pattern != null && pattern.some((v) => v != null);
+  const active =
+    (pattern != null && pattern.some((v) => v != null)) || rngLen != null;
   if (!active) return amounts;
   const out: number[] = [];
   for (const amount of amounts) {
-    if (await awardMatchesPattern(h, facadeId, amount, pattern!)) {
+    if (await awardMatchesPattern(h, facadeId, amount, pattern, rngLen)) {
       out.push(amount);
     }
   }
@@ -389,16 +412,20 @@ function parseRng(value: unknown): number[] {
 export async function getReelStops(
   h: DbHandle,
   award: Award,
-  limit = 8
+  limit = 8,
+  rngLen: RngLenFilter | null = null
 ): Promise<ReelStopCandidate[]> {
-  if (h.type === "type2") return getSegmentReelStops(h, award, limit, null);
+  if (h.type === "type2")
+    return getSegmentReelStops(h, award, limit, null, rngLen);
   const hi = award.sequenceStart + award.totalCount - 1;
   const { rows } = await h.sqlite3.execWithParams(
     h.db,
     "SELECT RngValues FROM Presentation WHERE PresentationId BETWEEN ? AND ? LIMIT ?",
     [award.sequenceStart, hi, limit]
   );
-  return rows.map((r: any[]) => ({ values: parseRng(r[0]) }));
+  return rows
+    .map((r: any[]) => ({ values: parseRng(r[0]) }))
+    .filter((c: ReelStopCandidate) => rngLenOk(c.values.length, rngLen));
 }
 
 /**
@@ -413,9 +440,11 @@ export async function findMatchingReelStops(
   h: DbHandle,
   award: Award,
   pattern: (number | null)[],
-  scanCap = 2000
+  scanCap = 2000,
+  rngLen: RngLenFilter | null = null
 ): Promise<ReelStopCandidate[]> {
-  if (h.type === "type2") return getSegmentReelStops(h, award, scanCap, pattern);
+  if (h.type === "type2")
+    return getSegmentReelStops(h, award, scanCap, pattern, rngLen);
   const hi = award.sequenceStart + award.totalCount - 1;
   const { rows } = await h.sqlite3.execWithParams(
     h.db,
@@ -425,6 +454,7 @@ export async function findMatchingReelStops(
   const matches: ReelStopCandidate[] = [];
   for (const r of rows as any[][]) {
     const values = parseRng(r[0]);
+    if (!rngLenOk(values.length, rngLen)) continue;
     if (matchesPattern(values, pattern)) matches.push({ values });
   }
   return matches;
@@ -444,7 +474,8 @@ async function getSegmentReelStops(
   h: DbHandle,
   award: Award,
   maxPresentations: number,
-  pattern: (number | null)[] | null
+  pattern: (number | null)[] | null,
+  rngLen: RngLenFilter | null = null
 ): Promise<ReelStopCandidate[]> {
   const start = award.sequenceStart;
   const rangeHi = start + award.totalCount - 1;
@@ -474,6 +505,7 @@ async function getSegmentReelStops(
   const out: ReelStopCandidate[] = [];
   for (const pid of order) {
     const values = parseRng(byPid.get(pid)!.join(","));
+    if (!rngLenOk(values.length, rngLen)) continue;
     if (pattern && !matchesPattern(values, pattern)) continue;
     out.push({ values, presentationId: pid });
   }

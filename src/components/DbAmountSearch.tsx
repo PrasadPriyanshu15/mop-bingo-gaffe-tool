@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { DbHandle, Facade } from "@/lib/db";
+import type { DbHandle, Facade, RngLenFilter } from "@/lib/db";
 import type { MatchingPattern, Pattern, Paytable, Paytable59 } from "@/lib/types";
 import { parsePattern, patternIsActive } from "@/lib/reelstop";
 import { patternContains, cardBallCallBase } from "@/lib/patterns";
@@ -681,6 +681,10 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
   const [facadeSel, setFacadeSel] = useState<string>("all");
   const [amount, setAmount] = useState("");
   const [pattern, setPattern] = useState("");
+  // HPP (Type 2) only: bound the reconstructed RNG length. Blank = no bound;
+  // a single "300" keeps candidates with ≤ 300 RNG values, a range "100-300"
+  // keeps 100..300. Applies to both "Search DB" and "map DB amount → Patterns".
+  const [maxRng, setMaxRng] = useState("");
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View | null>(null);
@@ -704,17 +708,46 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
   const runIdRef = useRef(0);
 
   const showFacade = facadeSel === "all";
+  // The RNG-count cap only applies to HPP (Type 2) databases.
+  const isType2 = handle.type === "type2";
+
+  /** Resolve the "RNG count" field into a length bound. Blank / non-Type-2 → no
+   *  bound. A single "300" → ≤ 300; a range "100-300" → 100..300 (inclusive).
+   *  Values must be positive integers, otherwise `error` is set so callers bail. */
+  function parseMaxRng(): { filter: RngLenFilter | null; error: boolean } {
+    if (!isType2) return { filter: null, error: false };
+    const t = maxRng.trim();
+    if (t === "") return { filter: null, error: false };
+    const m = t.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (m) {
+      let lo = Number(m[1]);
+      let hi = Number(m[2]);
+      if (lo > hi) [lo, hi] = [hi, lo];
+      if (lo <= 0 || hi <= 0) return { filter: null, error: true };
+      return { filter: { min: lo, max: hi }, error: false };
+    }
+    const n = Number(t);
+    if (!Number.isInteger(n) || n <= 0) return { filter: null, error: true };
+    return { filter: { min: null, max: n }, error: false };
+  }
 
   async function runSearch(amountStr: string, patternStr: string) {
     const amt = parseAmountInput(amountStr);
     const pat = parsePattern(patternStr);
     const active = patternIsActive(pat);
+    const { filter: rngLen, error: maxRngErr } = parseMaxRng();
+    // A bound set alongside a positional filter (or on its own) also gates results.
+    const filterActive = active || rngLen != null;
 
+    if (maxRngErr) {
+      setError("RNG count must be a positive number or range, e.g. 300 or 100-300.");
+      return;
+    }
     if (amt.kind === "invalid") {
       setError("Enter a valid amount or range, e.g. 500 or 500-1000.");
       return;
     }
-    if (amt.kind === "none" && !active) {
+    if (amt.kind === "none" && !filterActive) {
       setError("Enter an amount, a range (500-1000), or a reelStop filter.");
       return;
     }
@@ -744,8 +777,8 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
           const found = await db.findAwardsByAmount(handle, facade.facadeId, amt.v);
           if (stale()) return;
           for (const award of found) {
-            const reelStops = active
-              ? await db.findMatchingReelStops(handle, award, pat)
+            const reelStops = filterActive
+              ? await db.findMatchingReelStops(handle, award, pat, 2000, rngLen)
               : await db.getReelStops(handle, award, 8);
             if (stale()) return;
             awards.push({ award, facadeKey: facade.facadeKey, reelStops });
@@ -756,7 +789,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       }
 
       // Range, no filter → just the amounts present in that range.
-      if (amt.kind === "range" && !active) {
+      if (amt.kind === "range" && !filterActive) {
         const amounts = await db.listAmounts(
           handle,
           facadeIdParam,
@@ -784,7 +817,13 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
           const found = await db.findAwardsByAmount(handle, facade.facadeId, a);
           if (stale()) return;
           for (const award of found) {
-            const rs = await db.findMatchingReelStops(handle, award, pat);
+            const rs = await db.findMatchingReelStops(
+              handle,
+              award,
+              pat,
+              2000,
+              rngLen
+            );
             if (stale()) return;
             if (rs.length > 0) {
               matched.push({ award, facadeKey: facade.facadeKey, reelStops: rs });
@@ -824,6 +863,12 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
 
     const pat = parsePattern(pattern);
     const active = patternIsActive(pat);
+    const { filter: rngLen, error: maxRngErr } = parseMaxRng();
+    if (maxRngErr) {
+      setError("RNG count must be a positive number or range, e.g. 300 or 100-300.");
+      return;
+    }
+    const constrained = active || rngLen != null;
 
     const myId = ++runIdRef.current;
     const stale = () => runIdRef.current !== myId;
@@ -841,13 +886,14 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       const res = await db.findMinMaxAmount(
         handle,
         facade.facadeId,
-        active ? pat : null
+        active ? pat : null,
+        rngLen
       );
       if (stale()) return;
       if (!res) {
         setError(
-          active
-            ? "No award matches this reelStop filter for this bet line."
+          constrained
+            ? "No award matches this filter for this bet line."
             : "No amounts found for this bet line."
         );
         return;
@@ -857,7 +903,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
         min: res.min,
         max: res.max,
         facadeKey: facade.facadeKey,
-        filtered: active,
+        filtered: constrained,
       });
     } catch (e) {
       if (!stale()) setError(e instanceof Error ? e.message : "Query failed.");
@@ -978,6 +1024,12 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
 
     const pat = parsePattern(pattern);
     const active = patternIsActive(pat);
+    const { filter: rngLen, error: maxRngErr } = parseMaxRng();
+    if (maxRngErr) {
+      setError("RNG count must be a positive number or range, e.g. 300 or 100-300.");
+      return;
+    }
+    const constrained = active || rngLen != null;
 
     const myId = ++runIdRef.current;
     const stale = () => runIdRef.current !== myId;
@@ -995,13 +1047,14 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       const mm = await db.findMinMaxAmount(
         handle,
         facade.facadeId,
-        active ? pat : null
+        active ? pat : null,
+        rngLen
       );
       if (stale()) return;
       if (!mm) {
         setError(
-          active
-            ? "No award matches this reelStop filter for this bet line."
+          constrained
+            ? "No award matches this filter for this bet line."
             : "No amounts found for this bet line."
         );
         return;
@@ -1011,7 +1064,8 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
         facade.facadeId,
         mm.min,
         mm.max,
-        active ? pat : null
+        active ? pat : null,
+        rngLen
       );
       if (stale()) return;
       setProgress({ done: 0, total: amounts.length });
@@ -1048,7 +1102,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
         groups,
         lo: mm.min,
         hi: mm.max,
-        filtered: active,
+        filtered: constrained,
         capped,
       });
     } catch (e) {
@@ -1213,6 +1267,29 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
             </button>
           </div>
 
+          {isType2 && (
+            <label className="db-field">
+              <span className="db-label">
+                RNG count (HPP only, single or range, blank = no bound)
+              </span>
+              <input
+                className="select"
+                type="text"
+                value={maxRng}
+                onChange={(e) => setMaxRng(e.target.value)}
+                placeholder="e.g. 300 or 100-300"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void runSearch(amount, pattern);
+                }}
+              />
+              <span className="muted small">
+                Keep only results whose RNG value count fits — “300” = up to 300,
+                “100-300” = between 100 and 300. Applies to Search DB and “map DB
+                amount → Patterns”.
+              </span>
+            </label>
+          )}
+
           {patternMatches &&
             (() => {
               const { lo, hi } = patternMatches;
@@ -1258,7 +1335,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
                   {view.groups.length === 1 ? "" : "s"} in{" "}
                   {view.lo.toLocaleString()}–{view.hi.toLocaleString()} map to a
                   pattern at <strong>{betKey}</strong>
-                  {view.filtered ? " · reelStop filter applied" : ""}
+                  {view.filtered ? " · filter applied" : ""}
                   {view.capped ? ` · first ${MAX_COMBOS} combos` : ""} (click to
                   open):
                 </p>
@@ -1319,7 +1396,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
                 </span>
               </div>
               {view.filtered && (
-                <p className="muted small">reelStop filter applied</p>
+                <p className="muted small">filter applied</p>
               )}
             </div>
           )}
