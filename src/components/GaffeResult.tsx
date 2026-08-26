@@ -12,7 +12,38 @@ interface Props {
   forcedNames: string[];
   /** Per-number highlight colors (a shared number carries several colors). */
   daubColors: Map<number, string[]>;
+  /** True when ballCalls are a user override (randomized / custom) vs auto. */
+  overridden: boolean;
+  /** The auto-computed draw order (for "reset to default" / clearing override). */
+  defaultCalls: number[];
+  /** Produce a fresh randomized-but-valid draw order. */
+  makeRandomCalls: () => number[];
+  /** Apply a ballCalls override (null = back to auto/default). */
+  onOverrideBallCalls: (calls: number[] | null) => void;
 }
+
+/** Parse a free-text list into ball numbers (1–75, unique). */
+function parseCalls(
+  s: string
+): { ok: true; calls: number[] } | { ok: false; error: string } {
+  const nums = s
+    .split(/[^0-9]+/)
+    .filter((t) => t !== "")
+    .map(Number);
+  if (nums.length === 0) return { ok: false, error: "Enter at least one number." };
+  const seen = new Set<number>();
+  for (const n of nums) {
+    if (!Number.isInteger(n) || n < 1 || n > 75) {
+      return { ok: false, error: `Each ball must be 1–75 (got ${n}).` };
+    }
+    if (seen.has(n)) return { ok: false, error: `Duplicate ball ${n}.` };
+    seen.add(n);
+  }
+  return { ok: true, calls: nums };
+}
+
+const sameOrder = (a: number[], b: number[]) =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
 
 /** Right-side panel: the generated gaffe result, with draw-order ballCalls. */
 export default function GaffeResult({
@@ -21,8 +52,31 @@ export default function GaffeResult({
   built,
   forcedNames,
   daubColors,
+  overridden,
+  defaultCalls,
+  makeRandomCalls,
+  onOverrideBallCalls,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [bcError, setBcError] = useState<string | null>(null);
+
+  function startEdit() {
+    setDraft(built.calls.join(", "));
+    setBcError(null);
+    setEditing(true);
+  }
+  function saveEdit() {
+    const parsed = parseCalls(draft);
+    if (!parsed.ok) {
+      setBcError(parsed.error);
+      return;
+    }
+    onOverrideBallCalls(sameOrder(parsed.calls, defaultCalls) ? null : parsed.calls);
+    setBcError(null);
+    setEditing(false);
+  }
 
   const gaffe = reelStops.length
     ? { reelStops, bingoCard, ballCalls: built.calls }
@@ -116,11 +170,83 @@ export default function GaffeResult({
       </div>
 
       <div className="result-field">
-        <span className="result-key">
-          ballCalls <span className="muted">({built.calls.length})</span> — draw
-          order (B/I/N/G/O)
+        <span className="result-key result-key-row">
+          <span>
+            ballCalls <span className="muted">({built.calls.length})</span> —{" "}
+            {overridden ? "custom / randomized" : "auto"} draw order (B/I/N/G/O)
+          </span>
+          {editing ? (
+            <span className="bingo-actions">
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => setDraft(makeRandomCalls().join(", "))}
+              >
+                Randomize
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => setDraft(defaultCalls.join(", "))}
+              >
+                Default
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => {
+                  setEditing(false);
+                  setBcError(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button type="button" className="btn btn-small" onClick={saveEdit}>
+                Save
+              </button>
+            </span>
+          ) : (
+            <span className="bingo-actions">
+              {overridden && (
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  onClick={() => onOverrideBallCalls(null)}
+                >
+                  Use default
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={startEdit}
+              >
+                Edit
+              </button>
+            </span>
+          )}
         </span>
-        <div className="bcalls">
+
+        {editing ? (
+          <>
+            <textarea
+              className="ws-textarea"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="e.g. 1, 16, 31, 47, 62, …"
+              spellCheck={false}
+            />
+            {bcError ? (
+              <p className="bingo-error">{bcError}</p>
+            ) : (
+              <p className="muted small">
+                Balls 1–75, comma/space separated. Randomize keeps forced daubs
+                within their ball qty; Default restores the auto sequence.
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="bcalls">
           <div className="bcalls-head">
             {COLUMN_LETTERS.map((letter, c) => (
               <div key={letter} className="bcalls-head-cell">
@@ -158,7 +284,8 @@ export default function GaffeResult({
               })}
             </div>
           ))}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

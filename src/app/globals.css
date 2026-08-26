@@ -277,6 +277,15 @@ body {
   color: #ff6b6b;
 }
 
+/* ballCalls edit header (key text + Randomize/Custom/Default actions) */
+.result-key-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .select,
 .search {
   width: 100%;
@@ -945,10 +954,59 @@ body {
   gap: 10px;
   margin-top: 14px;
 }
+.amount-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.amount-input-row .select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.amount-input-row .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .amount-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.minmax-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.minmax-line {
+  font-size: 13px;
+  color: var(--muted);
+}
+.minmax-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.minmax-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 14px;
+}
+.minmax-key {
+  font-family: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
 }
 .amount-list {
   display: flex;

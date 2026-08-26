@@ -27,7 +27,12 @@ import {
   cardBallCallBase,
   highlightColor,
 } from "@/lib/patterns";
-import { buildBallCalls, patternDaubNumbers, type Daub } from "@/lib/gaffe";
+import {
+  buildBallCalls,
+  layoutFromOrder,
+  patternDaubNumbers,
+  type Daub,
+} from "@/lib/gaffe";
 import { evaluateInGame } from "@/lib/evaluate";
 import { SAMPLE_GAFFE } from "@/lib/sample";
 import type { MatchingPattern, Pattern, Paytable59 } from "@/lib/types";
@@ -160,12 +165,14 @@ export default function Home() {
     setBetKey(null);
     setPatternId(null);
     setThresholds(new Map());
+    setBallCallsOverride(null);
   }
 
   function handleBetLevel(key: string) {
     setBetKey(key);
     // Thresholds reference this level's ballQty values; start fresh.
     setThresholds(new Map());
+    setBallCallsOverride(null);
   }
 
   /** Click a row: set the pattern's threshold to ballQty, or clear if same. */
@@ -275,6 +282,21 @@ export default function Home() {
     [ballCallBase, daubs]
   );
 
+  // Optional ballCalls override: null = auto (the computed default above); a
+  // number[] = a randomized or custom draw order the user pasted. It only changes
+  // the emitted ballCalls + the panel display/feasibility, not the payout math.
+  const [ballCallsOverride, setBallCallsOverride] = useState<number[] | null>(
+    null
+  );
+
+  const displayBuilt = useMemo(
+    () =>
+      ballCallsOverride
+        ? layoutFromOrder(ballCallsOverride, daubs)
+        : builtBallCalls,
+    [ballCallsOverride, daubs, builtBallCalls]
+  );
+
   // True in-game payout (AllPatternsPaid): score the generated draw order so the
   // total includes every pattern the machine would pay — including ones completed
   // only by the union of the selected patterns' daubs. This is what the game
@@ -321,10 +343,10 @@ export default function Home() {
     () =>
       JSON.stringify(
         reelStops.length
-          ? { reelStops, bingoCard, ballCalls: builtBallCalls.calls }
-          : { bingoCard, ballCalls: builtBallCalls.calls }
+          ? { reelStops, bingoCard, ballCalls: displayBuilt.calls }
+          : { bingoCard, ballCalls: displayBuilt.calls }
       ),
-    [reelStops, bingoCard, builtBallCalls]
+    [reelStops, bingoCard, displayBuilt]
   );
 
   const forcedNames = useMemo(
@@ -384,6 +406,7 @@ export default function Home() {
               handle={dbHandle}
               facades={dbFacades}
               data={data}
+              betKey={betKey}
               bingoCard={bingoCard}
               onApply={setReelStops}
               onCreatePattern={createPatternFromMatch}
@@ -485,9 +508,15 @@ export default function Home() {
             <GaffeResult
               reelStops={reelStops}
               bingoCard={bingoCard}
-              built={builtBallCalls}
+              built={displayBuilt}
               forcedNames={forcedNames}
               daubColors={daubColors}
+              overridden={ballCallsOverride != null}
+              defaultCalls={builtBallCalls.calls}
+              makeRandomCalls={() =>
+                buildBallCalls(ballCallBase, daubs, true).calls
+              }
+              onOverrideBallCalls={setBallCallsOverride}
             />
           </section>
         )}

@@ -240,6 +240,97 @@ export async function listAmounts(
   return rows.map((r: any[]) => Number(r[0]));
 }
 
+/**
+ * Smallest and largest Award.Amount for one bet line, optionally restricted to
+ * awards that have at least one reelStop matching a positional pattern.
+ *
+ * • No pattern → a single MIN/MAX aggregate over the facade's awards.
+ * • Pattern → positional matching can't be expressed in SQL (RngValues is a
+ *   variable-width comma string — see findMatchingReelStops), so walk the
+ *   facade's distinct amounts inward from both ends: the lowest amount with a
+ *   matching award is the min, the highest is the max. Each end stops at its
+ *   first hit, keeping the scan bounded.
+ *
+ * Returns null when no qualifying award exists.
+ */
+export async function findMinMaxAmount(
+  h: DbHandle,
+  facadeId: number,
+  pattern: (number | null)[] | null
+): Promise<{ min: number; max: number } | null> {
+  const active = pattern != null && pattern.some((v) => v != null);
+  if (!active) {
+    const { rows } = await h.sqlite3.execWithParams(
+      h.db,
+      "SELECT MIN(Amount), MAX(Amount) FROM Award WHERE FacadeId=?",
+      [facadeId]
+    );
+    const r = rows[0];
+    if (!r || r[0] == null || r[1] == null) return null;
+    return { min: Number(r[0]), max: Number(r[1]) };
+  }
+
+  const amounts = await listAmounts(h, facadeId, null, null);
+  let min: number | null = null;
+  for (let i = 0; i < amounts.length; i++) {
+    if (await awardMatchesPattern(h, facadeId, amounts[i], pattern!)) {
+      min = amounts[i];
+      break;
+    }
+  }
+  if (min == null) return null; // nothing matched at all
+  let max = min;
+  for (let i = amounts.length - 1; i >= 0 && amounts[i] > min; i--) {
+    if (await awardMatchesPattern(h, facadeId, amounts[i], pattern!)) {
+      max = amounts[i];
+      break;
+    }
+  }
+  return { min, max };
+}
+
+/**
+ * True when some award for (facadeId, amount) has at least one reelStop matching
+ * the positional pattern. Shared by findMinMaxAmount and listAmountsMatchingPattern.
+ */
+async function awardMatchesPattern(
+  h: DbHandle,
+  facadeId: number,
+  amount: number,
+  pattern: (number | null)[]
+): Promise<boolean> {
+  const awards = await findAwardsByAmount(h, facadeId, amount);
+  for (const award of awards) {
+    const rs = await findMatchingReelStops(h, award, pattern);
+    if (rs.length > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * Distinct amounts for one bet line within [lo, hi], optionally restricted to
+ * amounts that have at least one award whose reelStop matches a positional
+ * pattern. When the pattern is null/all-wildcard this is just listAmounts.
+ */
+export async function listAmountsMatchingPattern(
+  h: DbHandle,
+  facadeId: number,
+  lo: number | null,
+  hi: number | null,
+  pattern: (number | null)[] | null
+): Promise<number[]> {
+  const amounts = await listAmounts(h, facadeId, lo, hi);
+  const active = pattern != null && pattern.some((v) => v != null);
+  if (!active) return amounts;
+  const out: number[] = [];
+  for (const amount of amounts) {
+    if (await awardMatchesPattern(h, facadeId, amount, pattern!)) {
+      out.push(amount);
+    }
+  }
+  return out;
+}
+
 export async function findAwardsByAmount(
   h: DbHandle,
   facadeId: number,

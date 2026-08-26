@@ -71,14 +71,31 @@ export interface BuiltBallCalls {
  * fill the remaining slots ascending. Each forced number's real flat position is
  * checked against its `q` and reported as infeasible when it can't fit in time.
  */
-export function buildBallCalls(base: number[], daubs: Daub[]): BuiltBallCalls {
+/** In-place Fisher–Yates shuffle using the given rng (default Math.random). */
+function shuffle<T>(a: T[], rng: () => number): T[] {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+export function buildBallCalls(
+  base: number[],
+  daubs: Daub[],
+  random = false,
+  rng: () => number = Math.random
+): BuiltBallCalls {
   const daubSet = new Set(daubs.map((d) => d.value));
 
   const baseByRange: number[][] = [[], [], [], [], []];
   for (const n of base) {
     if (!daubSet.has(n)) baseByRange[rangeOf(n)].push(n);
   }
-  baseByRange.forEach((a) => a.sort((x, y) => x - y));
+  // Default fills base ascending; randomize shuffles the filler order per range.
+  baseByRange.forEach((a) =>
+    random ? shuffle(a, rng) : a.sort((x, y) => x - y)
+  );
 
   const daubsByRange: Daub[][] = [[], [], [], [], []];
   for (const d of daubs) daubsByRange[rangeOf(d.value)].push(d);
@@ -96,10 +113,18 @@ export function buildBallCalls(base: number[], daubs: Daub[]): BuiltBallCalls {
       if (maxRow < 0) maxRow = 0;
 
       let row = -1;
-      for (let i = maxRow; i >= 0; i--) {
-        if (slots[i] === null) {
-          row = i;
-          break;
+      if (random) {
+        // Random feasible slot (any free row <= maxRow) so the pattern still
+        // completes within its ball qty, just at a randomized position.
+        const free: number[] = [];
+        for (let i = 0; i <= maxRow; i++) if (slots[i] === null) free.push(i);
+        if (free.length > 0) row = free[Math.floor(rng() * free.length)];
+      } else {
+        for (let i = maxRow; i >= 0; i--) {
+          if (slots[i] === null) {
+            row = i;
+            break;
+          }
         }
       }
       if (row === -1) {
@@ -135,6 +160,43 @@ export function buildBallCalls(base: number[], daubs: Daub[]): BuiltBallCalls {
       }
     }
   }
+
+  const placements: DaubPlacement[] = daubs
+    .map((d) => {
+      const position = posByValue.get(d.value) ?? -1;
+      return {
+        value: d.value,
+        q: d.q,
+        position,
+        ok: position > 0 && position <= d.q,
+        patternName: d.patternName,
+      };
+    })
+    .sort((a, b) => a.position - b.position);
+  const infeasible = placements.filter((p) => !p.ok);
+
+  return { calls, columns, rows, daubSet, placements, infeasible };
+}
+
+/**
+ * Build the display/feasibility view for a caller-supplied ballCalls order
+ * (custom paste or a randomized/overridden sequence). `calls` is preserved as-is
+ * for the emitted result; the grid columns are the same numbers bucketed by range
+ * in draw order, and each forced daub's feasibility is checked against its real
+ * position in `calls` (position -1 = the daub isn't drawn at all).
+ */
+export function layoutFromOrder(
+  calls: number[],
+  daubs: Daub[]
+): BuiltBallCalls {
+  const daubSet = new Set(daubs.map((d) => d.value));
+
+  const columns: number[][] = [[], [], [], [], []];
+  for (const n of calls) columns[rangeOf(n)].push(n);
+  const rows = columns.reduce((m, c) => Math.max(m, c.length), 0);
+
+  const posByValue = new Map<number, number>();
+  calls.forEach((v, i) => posByValue.set(v, i + 1));
 
   const placements: DaubPlacement[] = daubs
     .map((d) => {
