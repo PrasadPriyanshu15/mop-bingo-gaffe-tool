@@ -1283,9 +1283,9 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
                 }}
               />
               <span className="muted small">
-                Keep only results whose RNG value count fits — “300” = up to 300,
+                {/* Keep only results whose RNG value count fits — “300” = up to 300,
                 “100-300” = between 100 and 300. Applies to Search DB and “map DB
-                amount → Patterns”.
+                amount → Patterns”. */}
               </span>
             </label>
           )}
