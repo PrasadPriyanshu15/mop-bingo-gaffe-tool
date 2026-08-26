@@ -11,7 +11,11 @@ import type { MatchingPattern, Pattern, Paytable, Paytable59 } from "@/lib/types
 import { parsePattern, patternIsActive } from "@/lib/reelstop";
 import { patternContains, cardBallCallBase } from "@/lib/patterns";
 import { buildBallCalls, patternDaubNumbers } from "@/lib/gaffe";
-import { evaluateInGame, type PatternWin } from "@/lib/evaluate";
+import {
+  evaluateInGame,
+  refineCompletionTiers,
+  type PatternWin,
+} from "@/lib/evaluate";
 import AwardResults, { type AwardResult } from "./AwardResults";
 
 /**
@@ -37,13 +41,23 @@ function inGameFor(
     }
   }
   const daubs = [...qByValue].map(([value, q]) => ({ value, q }));
-  const calls = buildBallCalls(cardBallCallBase(bingoCard), daubs).calls;
   const entriesByPattern = new Map<number, MatchingPattern[]>();
   for (const e of entries) {
     const arr = entriesByPattern.get(e.patternId);
     if (arr) arr.push(e);
     else entriesByPattern.set(e.patternId, [e]);
   }
+  // Same draw-order refinement the main tool applies, so the flagged in-game
+  // total reflects the gaffe it would actually generate (completions nudged into
+  // the picked ball-qty band) rather than the raw packed order.
+  const thresholds = new Map(selections.map((s) => [s.patternId, s.ballQty]));
+  const calls = refineCompletionTiers(
+    buildBallCalls(cardBallCallBase(bingoCard), daubs).calls,
+    bingoCard,
+    patterns,
+    entriesByPattern,
+    thresholds
+  );
   const res = evaluateInGame(
     calls,
     bingoCard,

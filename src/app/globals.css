@@ -641,6 +641,43 @@ body {
   font-weight: 700;
 }
 
+/* Tier-cascade explanation: why a selected pattern pays more/less than picked. */
+.cascade-notes {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.cascade-notes-head {
+  font-size: 11.5px;
+  color: #ff9f43;
+  margin-bottom: 6px;
+}
+.cascade-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.cascade-item {
+  margin-bottom: 4px;
+}
+.cascade-pattern {
+  font-weight: 600;
+}
+.cascade-delta {
+  font-weight: 700;
+}
+.cascade-delta.up {
+  color: #ff9f43;
+}
+.cascade-delta.down {
+  color: var(--danger, #ff6b6b);
+}
+.cascade-notes-foot {
+  margin-top: 6px;
+}
+
 /* "true in-game payout differs" flag on a search match/combination. */
 .ingame-flag {
   display: inline-block;

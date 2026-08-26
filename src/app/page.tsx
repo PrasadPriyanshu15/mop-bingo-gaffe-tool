@@ -33,7 +33,7 @@ import {
   patternDaubNumbers,
   type Daub,
 } from "@/lib/gaffe";
-import { evaluateInGame } from "@/lib/evaluate";
+import { evaluateInGame, refineCompletionTiers } from "@/lib/evaluate";
 import { SAMPLE_GAFFE } from "@/lib/sample";
 import type { MatchingPattern, Pattern, Paytable59 } from "@/lib/types";
 
@@ -277,10 +277,35 @@ export default function Home() {
   // ballCalls base = 1..75 minus the (possibly edited) card numbers.
   const ballCallBase = useMemo(() => cardBallCallBase(bingoCard), [bingoCard]);
 
-  const builtBallCalls = useMemo(
-    () => buildBallCalls(ballCallBase, daubs),
-    [ballCallBase, daubs]
-  );
+  // Payable rows grouped by pattern id for the active bet level (used by both
+  // the in-game scorer and the draw-order refinement).
+  const entriesByPattern = useMemo(() => {
+    const m = new Map<number, MatchingPattern[]>();
+    if (!paytable) return m;
+    for (const e of paytable.entries) {
+      const arr = m.get(e.patternId);
+      if (arr) arr.push(e);
+      else m.set(e.patternId, [e]);
+    }
+    return m;
+  }, [paytable]);
+
+  // Base packed order, then nudge each selected pattern into its chosen ball-qty
+  // band so the emitted gaffe pays the intended amount instead of an inflated
+  // total from a pattern that finished early and lit a lower tier. See
+  // refineCompletionTiers; it's a no-op when nothing is selected.
+  const builtBallCalls = useMemo(() => {
+    const base = buildBallCalls(ballCallBase, daubs);
+    if (!data || thresholds.size === 0) return base;
+    const refined = refineCompletionTiers(
+      base.calls,
+      bingoCard,
+      data.patterns,
+      entriesByPattern,
+      thresholds
+    );
+    return layoutFromOrder(refined, daubs);
+  }, [ballCallBase, daubs, data, bingoCard, entriesByPattern, thresholds]);
 
   // Optional ballCalls override: null = auto (the computed default above); a
   // number[] = a randomized or custom draw order the user pasted. It only changes
@@ -305,12 +330,6 @@ export default function Home() {
     if (!data || !paytable) {
       return { total: 0, wins: [], extras: [] };
     }
-    const entriesByPattern = new Map<number, MatchingPattern[]>();
-    for (const e of paytable.entries) {
-      const arr = entriesByPattern.get(e.patternId);
-      if (arr) arr.push(e);
-      else entriesByPattern.set(e.patternId, [e]);
-    }
     return evaluateInGame(
       builtBallCalls.calls,
       bingoCard,
@@ -319,7 +338,7 @@ export default function Home() {
       new Set(thresholds.keys()),
       data.evaluationType === "HighestPriorityPaid"
     );
-  }, [data, paytable, builtBallCalls, bingoCard, thresholds]);
+  }, [data, paytable, builtBallCalls, bingoCard, thresholds, entriesByPattern]);
 
   // The total payout is the real in-game amount, so downstream (DB search, wins)
   // reflect what the machine pays rather than only the hand-picked rows.
@@ -338,6 +357,47 @@ export default function Home() {
       })),
     [inGame]
   );
+
+  // Per selected pattern: does the real completion ball make it pay a different
+  // amount than the row(s) the user ticked? A pattern that finishes earlier than
+  // its picked ball qty also lights up lower tiers (pays more); one that finishes
+  // later can miss its tier (pays less). Surfaced as an inline note so the gap
+  // between the selected subtotal and the in-game total is explained where the
+  // draw order can't be nudged all the way into the intended band.
+  const cascades = useMemo(() => {
+    const intendedByPattern = new Map<number, number>();
+    for (const r of effectiveRows) {
+      intendedByPattern.set(
+        r.patternId,
+        (intendedByPattern.get(r.patternId) ?? 0) + r.payout
+      );
+    }
+    const winByPattern = new Map(inGame.wins.map((w) => [w.patternId, w]));
+    const out: {
+      patternId: number;
+      patternName: string;
+      intended: number;
+      inGame: number;
+      completionBall: number | null;
+      thresholdBallQty: number;
+    }[] = [];
+    for (const [pid, thr] of thresholds) {
+      const intended = intendedByPattern.get(pid) ?? 0;
+      const w = winByPattern.get(pid);
+      const actual = w?.payout ?? 0;
+      if (actual === intended) continue;
+      out.push({
+        patternId: pid,
+        patternName: patternName(pid),
+        intended,
+        inGame: actual,
+        completionBall: w?.completionBall ?? null,
+        thresholdBallQty: thr,
+      });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveRows, inGame, thresholds, data]);
 
   const gaffeJson = useMemo(
     () =>
@@ -501,6 +561,7 @@ export default function Home() {
               selectedSubtotal={selectedSubtotal}
               inGameTotal={inGame.total}
               extras={inGame.extras}
+              cascades={cascades}
               onRemove={clearPattern}
               onClear={() => setThresholds(new Map())}
             />
@@ -513,9 +574,17 @@ export default function Home() {
               daubColors={daubColors}
               overridden={ballCallsOverride != null}
               defaultCalls={builtBallCalls.calls}
-              makeRandomCalls={() =>
-                buildBallCalls(ballCallBase, daubs, true).calls
-              }
+              makeRandomCalls={() => {
+                const calls = buildBallCalls(ballCallBase, daubs, true).calls;
+                if (!data || thresholds.size === 0) return calls;
+                return refineCompletionTiers(
+                  calls,
+                  bingoCard,
+                  data.patterns,
+                  entriesByPattern,
+                  thresholds
+                );
+              }}
               onOverrideBallCalls={setBallCallsOverride}
             />
           </section>

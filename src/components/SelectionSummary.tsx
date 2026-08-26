@@ -12,6 +12,21 @@ export interface SelectedRow {
   auto?: boolean;
 }
 
+/** A selected pattern whose real completion ball changes its payout vs. the
+ *  ticked row(s) — the reason the in-game total can differ from the subtotal. */
+export interface CascadeNote {
+  patternId: number;
+  patternName: string;
+  /** Sum of the rows the user ticked for this pattern. */
+  intended: number;
+  /** What this pattern actually pays in the generated draw order. */
+  inGame: number;
+  /** Ball at which the pattern completes in the draw order (null = never). */
+  completionBall: number | null;
+  /** Ball qty the user selected the pattern at. */
+  thresholdBallQty: number;
+}
+
 interface Props {
   rows: SelectedRow[];
   /** Sum of only the explicitly-picked rows. */
@@ -20,6 +35,8 @@ interface Props {
   inGameTotal: number;
   /** Paying patterns that were NOT explicitly selected (union-completed wins). */
   extras: PatternWin[];
+  /** Selected patterns whose completion ball makes them pay more/less than picked. */
+  cascades: CascadeNote[];
   /** Clear all selected rows for a pattern. */
   onRemove: (patternId: number) => void;
   onClear: () => void;
@@ -31,10 +48,12 @@ export default function SelectionSummary({
   selectedSubtotal,
   inGameTotal,
   extras,
+  cascades,
   onRemove,
   onClear,
 }: Props) {
   const hasExtras = extras.length > 0;
+  const hasCascades = cascades.length > 0;
 
   return (
     <div className="panel summary">
@@ -110,6 +129,54 @@ export default function SelectionSummary({
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {hasCascades && (
+            <div className="cascade-notes">
+              <div className="cascade-notes-head">
+                Tier cascade — completion ball changes the payout:
+              </div>
+              <ul className="cascade-list">
+                {cascades.map((c) => {
+                  const delta = c.inGame - c.intended;
+                  const early = delta > 0;
+                  return (
+                    <li key={c.patternId} className="cascade-item">
+                      <span className="cascade-pattern">
+                        {c.patternName} <span className="pattern-id">#{c.patternId}</span>
+                      </span>{" "}
+                      {c.completionBall == null ? (
+                        <>never completes in this draw order — pays 0 instead of{" "}
+                          {c.intended.toLocaleString()}.</>
+                      ) : early ? (
+                        <>completes at ball {c.completionBall} (earlier than the{" "}
+                          {c.thresholdBallQty}-ball row you picked), so it also
+                          pays its lower tier(s): {c.inGame.toLocaleString()} vs{" "}
+                          {c.intended.toLocaleString()} selected{" "}
+                          <span className="cascade-delta up">
+                            (+{delta.toLocaleString()})
+                          </span>
+                          .</>
+                      ) : (
+                        <>completes at ball {c.completionBall} (later than the{" "}
+                          {c.thresholdBallQty}-ball row you picked), so it misses
+                          a tier: {c.inGame.toLocaleString()} vs{" "}
+                          {c.intended.toLocaleString()} selected{" "}
+                          <span className="cascade-delta down">
+                            ({delta.toLocaleString()})
+                          </span>
+                          .</>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="cascade-notes-foot muted small">
+                The draw order is auto-tuned to hit the ball qty you pick; a
+                residual gap here means the card geometry left no later slot to
+                push the completion into.
+              </div>
             </div>
           )}
 
