@@ -7,7 +7,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { parseReelStrips, type ReelStrip } from "@/lib/parseReelStrips";
+import {
+  parseReelStrips,
+  parseReelStripsJson,
+  type ReelStrip,
+} from "@/lib/parseReelStrips";
 
 /** Height of one symbol block, in px — used for the grid + payline math. */
 const CELL = 44;
@@ -30,6 +34,22 @@ interface Props {
 
 const wrap = (n: number, len: number) => ((n % len) + len) % len;
 
+/**
+ * Map an RNG value to the landing stop index for a reel.
+ * - HPP (weighted .json): the RNG is wrapped over the reel's total weight, then
+ *   the symbol whose cumulative range [prevCum, cum) contains it is chosen.
+ * - APP (.xml, unweighted): direct positional wrap over the number of stops.
+ */
+function rngToIndex(rng: number, reel: ReelStrip): number {
+  if (reel.cumWeights && reel.totalWeight) {
+    const v = wrap(rng, reel.totalWeight);
+    const cw = reel.cumWeights;
+    for (let i = 0; i < cw.length; i++) if (v < cw[i]) return i; // first cum > v
+    return cw.length - 1;
+  }
+  return wrap(rng, reel.symbols.length);
+}
+
 const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
   function ReelStripViewer({ onLoadedChange, onSearch }, ref) {
     const inputRef = useRef<HTMLInputElement>(null);
@@ -47,6 +67,9 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     const [offset, setOffset] = useState(0);
     // Index at the offset (landing) row, per reel.
     const [positions, setPositions] = useState<number[]>([]);
+    // Raw RNG values (weighted strips), preserved so SEARCH matches the DB on
+    // the real RNG rather than the cumulative-mapped stop index.
+    const [rawValues, setRawValues] = useState<(number | undefined)[]>([]);
     const [slotSeq, setSlotSeq] = useState(0);
 
     // Apply a requested imperative scroll once the columns are in the DOM.
@@ -76,10 +99,14 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       setError(null);
       try {
         const text = await file.text();
-        const parsed = parseReelStrips(text);
+        const isJson = file.name.toLowerCase().endsWith(".json");
+        const parsed = isJson
+          ? parseReelStripsJson(text)
+          : parseReelStrips(text);
         const pos = parsed.map(() => 0);
         setReels(parsed);
         setPositions(pos);
+        setRawValues(parsed.map(() => undefined));
         setFileName(file.name);
         setOpen(true);
         onLoadedChange(true);
@@ -87,9 +114,12 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       } catch (e) {
         setReels(null);
         setPositions([]);
+        setRawValues([]);
         onLoadedChange(false);
         setError(
-          e instanceof Error ? e.message : "Failed to parse the reelStrip XML."
+          e instanceof Error
+            ? e.message
+            : "Failed to parse the reelStrip file (.xml / .json)."
         );
       }
     }
@@ -99,12 +129,15 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         if (!reels) return;
         // Carry the FULL candidate into the viewer (every reelStop value), so
         // the readout and SEARCH reflect all reels — not just the first 5.
-        // Values are wrapped into a reel's strip length where a reel exists.
+        // Each RNG value is mapped to a landing stop index: cumulative weights
+        // for HPP (.json) strips, direct positional wrap for APP (.xml).
         const pos = reelStops.map((v, i) =>
-          reels[i] ? wrap(v ?? 0, reels[i].symbols.length) : v
+          reels[i] ? rngToIndex(v ?? 0, reels[i]) : v
         );
         setOpen(true);
         setPositions(pos);
+        // Preserve the raw RNG values so SEARCH can send them for HPP strips.
+        setRawValues(reelStops.slice());
         // Only the first SLOT_REELS reels physically land on the slot grid; the
         // remaining values stay in `positions` (leave those reels untouched).
         requestScroll(pos.map((v, i) => (i < SLOT_REELS ? v : undefined)));
@@ -127,6 +160,16 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       setPositions((prev) =>
         prev[i] === idx ? prev : prev.map((v, j) => (j === i ? idx : v))
       );
+      // For weighted strips a manually chosen stop no longer maps to the loaded
+      // RNG, so make SEARCH use a representative raw value: the stop's lower
+      // cumulative boundary.
+      const reel = reels[i];
+      if (reel.cumWeights) {
+        const rngRep = idx === 0 ? 0 : reel.cumWeights[idx - 1];
+        setRawValues((prev) =>
+          prev[i] === rngRep ? prev : prev.map((v, j) => (j === i ? rngRep : v))
+        );
+      }
     }
 
     function changeRows(v: number) {
@@ -145,8 +188,14 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     }
 
     // SEARCH sends every reel position to the DB amount search — not just the
-    // first 5 that land on the slot grid.
-    const filterStr = positions.join(",");
+    // first 5 that land on the slot grid. For HPP (weighted) strips the DB is
+    // matched against raw RNG values, so send those instead of the stop index.
+    const weighted = !!reels?.some((r) => r.cumWeights);
+    const filterStr = (
+      weighted
+        ? reels!.map((_, i) => rawValues[i] ?? positions[i])
+        : positions
+    ).join(",");
 
     return (
       <div className="panel" ref={panelRef}>
@@ -168,12 +217,12 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                 className="btn"
                 onClick={() => inputRef.current?.click()}
               >
-                Choose reelStrip .xml…
+                Choose reelStrip .xml / .json…
               </button>
               <input
                 ref={inputRef}
                 type="file"
-                accept=".xml,text/xml,application/xml"
+                accept=".xml,.json,text/xml,application/xml,application/json"
                 hidden
                 onChange={(e) => {
                   const f = e.target.files?.[0];

@@ -42,7 +42,10 @@ export default function Home() {
   const [data, setData] = useState<Paytable59 | null>(null);
   const [loadedName, setLoadedName] = useState<string | null>(null);
   const [betKey, setBetKey] = useState<string | null>(null);
-  const [patternId, setPatternId] = useState<number | null>(null);
+  // Manually-selected patterns (section 3). A single fresh pick replaces the
+  // list; "+ Add" mode appends more so several patterns' payouts combine — the
+  // same multi-pattern outcome a DB "create combination" produces.
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   // Per-pattern selection threshold: the lowest chosen ballQty. Every instance
   // with ballQty >= threshold is selected (selecting one cascades to higher).
   const [thresholds, setThresholds] = useState<Map<number, number>>(new Map());
@@ -89,9 +92,15 @@ export default function Home() {
     [data]
   );
 
-  const selectedPattern = useMemo(
-    () => data?.patterns.find((p) => p.id === patternId) ?? null,
-    [data, patternId]
+  // The patterns chosen in section 3, resolved and in selection order.
+  const selectedPatterns = useMemo<Pattern[]>(
+    () =>
+      data
+        ? selectedIds
+            .map((id) => data.patterns.find((p) => p.id === id))
+            .filter((p): p is Pattern => p != null)
+        : [],
+    [data, selectedIds]
   );
 
   // Patterns actually referenced by the selected bet line — the pattern picker is
@@ -108,13 +117,20 @@ export default function Home() {
   // thousands of full-outcome patterns, so a selected outcome would "contain"
   // hundreds of them — computing and rendering an InstanceList for each would
   // freeze the page. Skip containment entirely for those games.
-  const contained = useMemo(
-    () =>
-      selectedPattern && data && data.evaluationType !== "HighestPriorityPaid"
-        ? containedPatterns(selectedPattern, data.patterns)
-        : [],
-    [selectedPattern, data]
-  );
+  const contained = useMemo<Pattern[]>(() => {
+    if (!data || data.evaluationType === "HighestPriorityPaid") return [];
+    const out: Pattern[] = [];
+    const seen = new Set<number>();
+    for (const sp of selectedPatterns) {
+      for (const c of containedPatterns(sp, data.patterns)) {
+        if (!seen.has(c.id)) {
+          seen.add(c.id);
+          out.push(c);
+        }
+      }
+    }
+    return out;
+  }, [selectedPatterns, data]);
 
   // Patterns to color/list: the browsed pattern first (if any), then every other
   // forced (thresholded) pattern in insertion order — e.g. a combination's
@@ -132,10 +148,10 @@ export default function Home() {
         seen.add(pid);
       }
     };
-    if (selectedPattern) push(selectedPattern.id);
+    for (const p of selectedPatterns) push(p.id);
     for (const pid of thresholds.keys()) push(pid);
     return list;
-  }, [data, selectedPattern, thresholds]);
+  }, [data, selectedPatterns, thresholds]);
 
   const bingoHighlights = useMemo(
     () =>
@@ -178,7 +194,7 @@ export default function Home() {
     setData(loaded);
     setLoadedName(fileName);
     setBetKey(null);
-    setPatternId(null);
+    setSelectedIds([]);
     setThresholds(new Map());
     setBallCallsOverride(null);
   }
@@ -188,6 +204,29 @@ export default function Home() {
     // Thresholds reference this level's ballQty values; start fresh.
     setThresholds(new Map());
     setBallCallsOverride(null);
+  }
+
+  /** Section 3 single pick: make this the only selected pattern. */
+  function selectOnlyPattern(id: number) {
+    setSelectedIds([id]);
+  }
+
+  /** Section 3 "+ Add" mode: add this pattern, or remove it if already picked.
+   *  Removing a pattern also drops any payout threshold it had, so section 4 and
+   *  the totals stay in sync. */
+  function togglePattern(id: number) {
+    const removing = selectedIds.includes(id);
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+    if (removing) {
+      setThresholds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   }
 
   /** Click a row: set the pattern's threshold to ballQty, or clear if same. */
@@ -209,7 +248,7 @@ export default function Home() {
     ballQty: number
   ) {
     setBetKey(facadeKey);
-    setPatternId(pid);
+    setSelectedIds([pid]);
     setThresholds(new Map([[pid, ballQty]]));
     triggerReelFind(facadeKey);
   }
@@ -221,7 +260,7 @@ export default function Home() {
     selections: { patternId: number; ballQty: number }[]
   ) {
     setBetKey(facadeKey);
-    setPatternId(selections[0]?.patternId ?? null);
+    setSelectedIds(selections.map((s) => s.patternId));
     setThresholds(new Map(selections.map((s) => [s.patternId, s.ballQty])));
     triggerReelFind(facadeKey);
   }
@@ -496,8 +535,9 @@ export default function Home() {
           {canPick && (
             <PatternSelect
               patterns={betLinePatterns}
-              selectedId={patternId}
-              onSelect={setPatternId}
+              selectedIds={selectedIds}
+              onSelect={selectOnlyPattern}
+              onToggle={togglePattern}
             />
           )}
 
@@ -539,7 +579,7 @@ export default function Home() {
             </div>
           )}
 
-          {canPick && (selectedPattern || thresholds.size > 0) && (
+          {canPick && (selectedPatterns.length > 0 || thresholds.size > 0) && (
             <div className="panel">
               <div className="panel-title">
                 4 · Payouts &amp; contained patterns
@@ -574,13 +614,16 @@ export default function Home() {
                   />
                 ))}
 
-              {selectedPattern &&
+              {selectedPatterns.length > 0 &&
                 contained.filter(
                   (p) => !highlightPatterns.some((h) => h.id === p.id)
                 ).length === 0 && (
                   <p className="muted small">
                     No other patterns are fully contained inside{" "}
-                    {selectedPattern.name}.
+                    {selectedPatterns.length === 1
+                      ? selectedPatterns[0].name
+                      : "the selected patterns"}
+                    .
                   </p>
                 )}
             </div>
