@@ -6,6 +6,8 @@ import { COLUMN_LETTERS, COLUMN_RANGES, cellHighlightStyle } from "@/lib/pattern
 
 interface Props {
   reelStops: number[];
+  /** Drop the reelStops from the emitted result (keep bingoCard + ballCalls). */
+  onRemoveReelStops: () => void;
   bingoCard: number[][];
   built: BuiltBallCalls;
   /** Names of the patterns currently being forced (for the hint line). */
@@ -48,6 +50,7 @@ const sameOrder = (a: number[], b: number[]) =>
 /** Right-side panel: the generated gaffe result, with draw-order ballCalls. */
 export default function GaffeResult({
   reelStops,
+  onRemoveReelStops,
   bingoCard,
   built,
   forcedNames,
@@ -62,6 +65,11 @@ export default function GaffeResult({
   const [draft, setDraft] = useState("");
   const [bcError, setBcError] = useState<string | null>(null);
 
+  // Numbers currently on the card — these never appear in ballCalls, so a pasted
+  // draw log (which includes daubed card numbers) has them stripped on save.
+  const cardNumbers = new Set<number>();
+  for (const row of bingoCard) for (const n of row) if (n !== 0) cardNumbers.add(n);
+
   function startEdit() {
     setDraft(built.calls.join(", "));
     setBcError(null);
@@ -73,7 +81,14 @@ export default function GaffeResult({
       setBcError(parsed.error);
       return;
     }
-    onOverrideBallCalls(sameOrder(parsed.calls, defaultCalls) ? null : parsed.calls);
+    // Drop any card numbers from the pasted order: ballCalls are 1–75 minus the
+    // card, so a pasted full draw log becomes just the non-card calls, in order.
+    const calls = parsed.calls.filter((n) => !cardNumbers.has(n));
+    if (calls.length === 0) {
+      setBcError("No ball calls left after removing the card's numbers.");
+      return;
+    }
+    onOverrideBallCalls(sameOrder(calls, defaultCalls) ? null : calls);
     setBcError(null);
     setEditing(false);
   }
@@ -97,9 +112,21 @@ export default function GaffeResult({
     <div className="panel result">
       <div className="panel-title">
         Generated gaffe result
-        <button type="button" className="btn btn-small" onClick={copy}>
-          {copied ? "Copied!" : "Copy JSON"}
-        </button>
+        <span className="bingo-actions">
+          {reelStops.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={onRemoveReelStops}
+              title="Drop reelStops from the result (keep bingoCard + ballCalls)"
+            >
+              Remove reelStops
+            </button>
+          )}
+          <button type="button" className="btn btn-small" onClick={copy}>
+            {copied ? "Copied!" : "Copy JSON"}
+          </button>
+        </span>
       </div>
 
       {forcedNames.length > 0 ? (
@@ -240,8 +267,10 @@ export default function GaffeResult({
               <p className="bingo-error">{bcError}</p>
             ) : (
               <p className="muted small">
-                Balls 1–75, comma/space separated. Randomize keeps forced daubs
-                within their ball qty; Default restores the auto sequence.
+                Balls 1–75, comma/space separated. Paste a full draw log and the
+                card&apos;s own numbers are stripped automatically. Randomize keeps
+                forced daubs within their ball qty; Default restores the auto
+                sequence.
               </p>
             )}
           </>

@@ -160,7 +160,30 @@ export async function openDatabase(
   const module = await SQLiteESMFactory({
     locateFile: () => `${base}/wa-sqlite/wa-sqlite-async.wasm`,
   });
-  const sqlite3 = SQLite.Factory(module);
+  const rawSqlite3 = SQLite.Factory(module);
+
+  // wa-sqlite's asyncify build is single-connection and NOT re-entrant: starting
+  // a query while another is still awaiting throws SQLITE_MISUSE ("bad parameter
+  // or other API misuse"). The UI can fire overlapping queries (e.g. the reelStop
+  // finder's amount flag + an auto-find, or the DB amount search) against this one
+  // handle, so serialize every parametrised query through a FIFO promise chain. A
+  // failed query still releases the chain so it never wedges later queries.
+  //
+  // Shadow execWithParams on a delegating wrapper rather than mutating the raw
+  // object (its methods may be read-only, and reassigning would throw in a module's
+  // strict mode). All other methods fall through to the original via the prototype.
+  const rawExecWithParams = rawSqlite3.execWithParams.bind(rawSqlite3);
+  let chain: Promise<unknown> = Promise.resolve();
+  const sqlite3 = Object.create(rawSqlite3);
+  sqlite3.execWithParams = (dbArg: number, sql: string, params: unknown[]) => {
+    const run = () => rawExecWithParams(dbArg, sql, params);
+    const next = chain.then(run, run);
+    chain = next.then(
+      () => undefined,
+      () => undefined
+    );
+    return next;
+  };
 
   const vfs = new FileVFS(file);
   sqlite3.vfs_register(vfs, false);

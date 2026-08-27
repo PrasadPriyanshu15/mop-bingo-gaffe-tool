@@ -35,6 +35,36 @@ function toDraft(card: number[][]): string[][] {
   return card.map((row) => row.map((n) => (n === 0 ? "" : String(n))));
 }
 
+/**
+ * Parse a pasted card line into a string draft. Accepts any 25 numbers (e.g.
+ * `[[4,26,33,57,70],[5,17,38,59,72],…]`, row-major B/I/N/G/O) — the center
+ * (index 12) is forced to the free space regardless of what's pasted there.
+ */
+function fromPaste(
+  text: string
+): { ok: true; draft: string[][] } | { ok: false; error: string } {
+  const nums = text
+    .split(/[^0-9]+/)
+    .filter((t) => t !== "")
+    .map(Number);
+  if (nums.length !== CELL_COUNT) {
+    return {
+      ok: false,
+      error: `Expected ${CELL_COUNT} numbers (got ${nums.length}).`,
+    };
+  }
+  const draft: string[][] = [];
+  for (let r = 0; r < GRID_SIZE; r++) {
+    const row: string[] = [];
+    for (let c = 0; c < GRID_SIZE; c++) {
+      const i = r * GRID_SIZE + c;
+      row.push(i === FREE_INDEX ? "" : String(nums[i]));
+    }
+    draft.push(row);
+  }
+  return { ok: true, draft };
+}
+
 /** Parse a string draft into a numeric card; blank/free center -> 0. */
 function fromDraft(draft: string[][]): number[][] {
   return draft.map((row, r) =>
@@ -67,11 +97,24 @@ export default function BingoGrid({ bingoCard, highlights, onChange }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string[][]>(() => toDraft(bingoCard));
   const [error, setError] = useState<string | null>(null);
+  const [paste, setPaste] = useState("");
 
   function startEdit() {
     setDraft(toDraft(bingoCard));
     setError(null);
+    setPaste("");
     setEditing(true);
+  }
+
+  function applyPaste() {
+    const res = fromPaste(paste);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setDraft(res.draft);
+    setPaste("");
+    setError(null);
   }
 
   function cancel() {
@@ -195,12 +238,34 @@ export default function BingoGrid({ bingoCard, highlights, onChange }: Props) {
         </div>
       </div>
 
+      {editing && (
+        <div className="bingo-paste">
+          <textarea
+            className="ws-textarea"
+            value={paste}
+            onChange={(e) => setPaste(e.target.value)}
+            placeholder="Paste a card, e.g. [[4, 26, 33, 57, 70],[5, 17, 38, 59, 72],[12, 16, 40, 47, 61],[9, 21, 31, 49, 65],[3, 24, 39, 60, 67]]"
+            spellCheck={false}
+            rows={2}
+          />
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={applyPaste}
+            disabled={paste.trim() === ""}
+          >
+            Fill from paste
+          </button>
+        </div>
+      )}
+
       {editing && error && <p className="bingo-error">{error}</p>}
 
       {editing && !error && (
         <p className="muted small">
-          Enter each column&apos;s numbers within its range; the center stays
-          free. ballCalls update to 1–75 minus the card.
+          Enter each column&apos;s numbers within its range, or paste a whole card
+          line above; the center (12th cell) stays free. ballCalls update to 1–75
+          minus the card.
         </p>
       )}
 

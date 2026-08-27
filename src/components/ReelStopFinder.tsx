@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { DbHandle, DbType, Facade } from "@/lib/db";
+import type { DbHandle, DbType, Facade, RngLenFilter } from "@/lib/db";
 import { parsePattern, patternIsActive } from "@/lib/reelstop";
 import AwardResults, { type AwardResult } from "./AwardResults";
 
@@ -24,6 +24,17 @@ interface Props {
   onSlot: (reelStops: number[]) => void;
   /** Whether a reelStrip .xml is loaded (enables the "slot" button). */
   reelStripLoaded: boolean;
+  /** Bet line (facadeKey) a "create pattern" click wants pre-selected here. */
+  autoFindFacadeKey?: string | null;
+  /** DB facadeId selected in the amount search — preferred over facadeKey, since
+   *  DB facade keys need not match the XML paytable keys (Type 2 / HPP). */
+  autoFindFacadeId?: number | null;
+  /** reelStop positional filter to mirror from the DB amount search. */
+  autoFindPattern?: string;
+  /** RNG-length bound (HPP) to mirror from the DB amount search. */
+  autoFindMaxRng?: string;
+  /** Changes each time an auto-find is requested; triggers the lookup. */
+  autoFindToken?: number;
 }
 
 /** One amount searched, with its matching awards (across the target facades). */
@@ -47,6 +58,11 @@ export default function ReelStopFinder({
   onDbReady,
   onSlot,
   reelStripLoaded,
+  autoFindFacadeKey,
+  autoFindFacadeId,
+  autoFindPattern,
+  autoFindMaxRng,
+  autoFindToken,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const handleRef = useRef<DbHandle | null>(null);
@@ -57,6 +73,9 @@ export default function ReelStopFinder({
   // Which schema the file to upload uses (applies to the next file chosen):
   // type1 = RngValues on Presentation; type2 = RngValues in the Segment table.
   const [dbType, setDbType] = useState<DbType>("type1");
+  // The schema of the currently-open DB (independent of the picker above, which
+  // only affects the next upload). Gates the RNG-length filter, which is Type-2 only.
+  const [openedType, setOpenedType] = useState<DbType | null>(null);
 
   const [facades, setFacades] = useState<Facade[]>([]);
   const [facadeId, setFacadeId] = useState<number | null>(null);
@@ -79,6 +98,10 @@ export default function ReelStopFinder({
   // Positional filter (Update 3). Narrows shown candidates live; also honored
   // by find() to pull DB matches beyond the per-award display cap.
   const [pattern, setPattern] = useState("");
+  // HPP (Type 2) only: bound the reconstructed RNG length. Blank = no bound; a
+  // single "300" keeps candidates with <= 300 RNG values, a range "100-300" keeps
+  // 100..300. Mirrors the DB amount search field of the same name.
+  const [maxRng, setMaxRng] = useState("");
 
   const multiWin = wins.length > 1;
   const eachMode = mode === "each" && multiWin;
@@ -105,6 +128,36 @@ export default function ReelStopFinder({
     };
   }, [status, totalPayout]);
 
+  // Auto-find: when a "create pattern" click bumps autoFindToken, point this
+  // panel at the same bet line and run the lookup. The effect runs after the
+  // parent re-render that changed the token, so `totalPayout` here is already
+  // the freshly-computed amount. Guarded to the initial token (0) doing nothing.
+  const lastAutoToken = useRef(autoFindToken ?? 0);
+  useEffect(() => {
+    const token = autoFindToken ?? 0;
+    if (token === lastAutoToken.current) return;
+    lastAutoToken.current = token;
+    if (status !== "ready" || !handleRef.current) return;
+    // Prefer the DB facadeId chosen in the amount search (exact for every DB
+    // type); fall back to matching the XML paytable key when no bet line was
+    // singled out there (facadeSel = "all", typical for Type 1).
+    const targetId =
+      autoFindFacadeId != null &&
+      facades.some((f) => f.facadeId === autoFindFacadeId)
+        ? autoFindFacadeId
+        : facades.find((f) => f.facadeKey === autoFindFacadeKey)?.facadeId ??
+          null;
+    if (targetId == null) return;
+    const pat = autoFindPattern ?? "";
+    const rng = autoFindMaxRng ?? "";
+    setFacadeId(targetId);
+    setSearchAll(false);
+    setPattern(pat); // mirror the DB amount search's filters into this panel
+    setMaxRng(rng);
+    void find({ facadeId: targetId, pattern: pat, maxRng: rng });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFindToken]);
+
   async function handleFile(file: File) {
     setError(null);
     setSections(null);
@@ -119,6 +172,7 @@ export default function ReelStopFinder({
       if (handleRef.current) await db.closeDatabase(handleRef.current);
       const h = await db.openDatabase(file, dbType);
       handleRef.current = h;
+      setOpenedType(dbType);
       const list = await db.listFacades(h);
       setFacades(list);
       setFacadeId(list[0]?.facadeId ?? null);
@@ -131,22 +185,63 @@ export default function ReelStopFinder({
     }
   }
 
-  async function find() {
-    if (!handleRef.current || (facadeId == null && !searchAll)) return;
+  // Parse the RNG-length field (Type 2 only), mirroring the DB amount search:
+  // blank = no bound, "300" = <= 300, "100-300" = 100..300.
+  function parseMaxRng(str: string): {
+    filter: RngLenFilter | null;
+    error: boolean;
+  } {
+    if (openedType !== "type2") return { filter: null, error: false };
+    const t = str.trim();
+    if (t === "") return { filter: null, error: false };
+    const m = t.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (m) {
+      let lo = Number(m[1]);
+      let hi = Number(m[2]);
+      if (lo > hi) [lo, hi] = [hi, lo];
+      if (lo <= 0 || hi <= 0) return { filter: null, error: true };
+      return { filter: { min: lo, max: hi }, error: false };
+    }
+    const n = Number(t);
+    if (!Number.isInteger(n) || n <= 0) return { filter: null, error: true };
+    return { filter: { min: null, max: n }, error: false };
+  }
+
+  async function find(opts?: {
+    facadeId?: number;
+    pattern?: string;
+    maxRng?: string;
+  }) {
+    // An override (from an auto-find) targets exactly that bet line, ignoring the
+    // "search all" toggle so the found reelStops match the DB search's bet line.
+    const auto = opts?.facadeId !== undefined;
+    const fid = auto ? opts!.facadeId! : facadeId;
+    const useAll = searchAll && !auto;
+    if (!handleRef.current || (fid == null && !useAll)) return;
+
+    const pat = parsePattern(opts?.pattern ?? pattern);
+    const active = patternIsActive(pat);
+    const { filter: rngLen, error: rngErr } = parseMaxRng(opts?.maxRng ?? maxRng);
+    if (rngErr) {
+      setError(
+        "RNG length must be a positive number or range like 100-300."
+      );
+      return;
+    }
+    const constrained = active || rngLen != null;
+
     setSearching(true);
     setError(null);
     setSections(null);
     setOpenSections(new Set());
     try {
       const db = await import("@/lib/db");
-      const pat = parsePattern(pattern);
-      const active = patternIsActive(pat);
 
       // Which bet lines to search: just the selected one, or every facade that
       // has a matching award (the ✓-flagged set) when "search all" is on.
-      const targets: Facade[] = searchAll
+      const targets: Facade[] = useAll
         ? facades.filter((f) => facadesWithResults.has(f.facadeId))
-        : facades.filter((f) => f.facadeId === facadeId);
+        : facades.filter((f) => f.facadeId === fid);
 
       // Which amounts to search: the summed total, or each selected win.
       const amounts: { key: string; label: string; amount: number }[] = eachMode
@@ -169,8 +264,14 @@ export default function ReelStopFinder({
             a.amount
           );
           for (const award of found) {
-            const reelStops = active
-              ? await db.findMatchingReelStops(handleRef.current, award, pat)
+            const reelStops = constrained
+              ? await db.findMatchingReelStops(
+                  handleRef.current,
+                  award,
+                  pat,
+                  2000,
+                  rngLen
+                )
               : await db.getReelStops(handleRef.current, award, 8);
             awards.push({ award, facadeKey: facade.facadeKey, reelStops });
           }
@@ -299,10 +400,23 @@ export default function ReelStopFinder({
               />
             </label>
 
+            {openedType === "type2" && (
+              <label className="db-field">
+                <span className="db-label">RNG length (blank = any)</span>
+                <input
+                  className="select db-search"
+                  type="text"
+                  value={maxRng}
+                  onChange={(e) => setMaxRng(e.target.value)}
+                  placeholder="e.g. 300 or 100-300"
+                />
+              </label>
+            )}
+
             <button
               type="button"
               className="btn"
-              onClick={find}
+              onClick={() => find()}
               disabled={searching}
             >
               {searching ? "Searching…" : "Find reelStops"}

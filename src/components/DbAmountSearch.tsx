@@ -84,6 +84,10 @@ function extrasTitle(extras: PatternWin[]): string {
 export interface DbAmountSearchHandle {
   /** Open the panel, set the reelStop filter, and run the search. */
   runWithFilter: (filter: string) => void;
+  /** Current filter values + the selected DB bet line, so a "create pattern"
+   *  click can mirror them into the reelStops finder (section 5). `facadeSel` is
+   *  a DB facadeId as a string, or "all". */
+  getFilters: () => { pattern: string; maxRng: string; facadeSel: string };
 }
 
 interface Props {
@@ -1147,6 +1151,9 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       requestAnimationFrame(() =>
         panelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
       );
+    },
+    getFilters() {
+      return { pattern, maxRng, facadeSel };
     },
   }));
 

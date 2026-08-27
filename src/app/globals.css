@@ -470,6 +470,19 @@ body {
   font-size: 12.5px;
   color: var(--danger);
 }
+.bingo-paste {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+}
+.bingo-paste .ws-textarea {
+  min-height: 40px;
+  flex: 1;
+}
+.bingo-paste .btn {
+  flex: 0 0 auto;
+}
 
 @media (max-width: 520px) {
   .bingo-cell {
@@ -639,6 +652,33 @@ body {
   padding: 2px 7px;
   border-radius: 999px;
   font-weight: 700;
+}
+
+/* Ephemeral scratch notepad below the generated gaffe (never persisted). */
+.notepad-area {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2, rgba(255, 255, 255, 0.03));
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.notepad-area:focus {
+  outline: none;
+  border-color: var(--accent, #4d9fff);
+}
+.notepad-area::placeholder {
+  color: var(--muted);
+}
+.notepad-hint {
+  margin-top: 6px;
 }
 
 /* Tier-cascade explanation: why a selected pattern pays more/less than picked. */

@@ -10,6 +10,7 @@ import SelectionSummary, {
   type SelectedRow,
 } from "@/components/SelectionSummary";                                       
 import GaffeResult from "@/components/GaffeResult";
+import Notepad from "@/components/Notepad";
 import ReelStopFinder, { type Win } from "@/components/ReelStopFinder";
 import DbAmountSearch, {                     
   type DbAmountSearchHandle,                                         
@@ -62,6 +63,20 @@ export default function Home() {
   const [reelStripLoaded, setReelStripLoaded] = useState(false);
   const reelStripRef = useRef<ReelStripHandle>(null);
   const dbSearchRef = useRef<DbAmountSearchHandle>(null);
+  // Bumped when a "create pattern" click in the DB amount search should drive the
+  // reelStops finder: it carries the bet line to select and the filters to mirror
+  // there, plus a token whose change triggers an automatic "Find reelStops" (after
+  // the new total settles).
+  const [autoFindReel, setAutoFindReel] = useState<{
+    facadeKey: string;
+    // Selected DB bet line in the amount search (a DB facadeId, or null for
+    // "all"). Preferred over facadeKey because the DB's facade keys don't always
+    // match the XML paytable keys (Type 2 / HPP games).
+    facadeId: number | null;
+    pattern: string;
+    maxRng: string;
+    token: number;
+  } | null>(null);
 
   const paytable = useMemo(
     () => data?.paytables.find((p) => p.facadeKey === betKey) ?? null,
@@ -196,6 +211,7 @@ export default function Home() {
     setBetKey(facadeKey);
     setPatternId(pid);
     setThresholds(new Map([[pid, ballQty]]));
+    triggerReelFind(facadeKey);
   }
 
   /** Like createPatternFromMatch but selects several patterns at once (a
@@ -207,6 +223,25 @@ export default function Home() {
     setBetKey(facadeKey);
     setPatternId(selections[0]?.patternId ?? null);
     setThresholds(new Map(selections.map((s) => [s.patternId, s.ballQty])));
+    triggerReelFind(facadeKey);
+  }
+
+  /** Point the reelStops finder (section 5) at the same bet line the DB search
+   *  used, mirror its active filters, and auto-run its lookup. Bumping the token
+   *  re-fires the finder's effect after this render commits, so it searches the
+   *  freshly-computed total. */
+  function triggerReelFind(facadeKey: string) {
+    const filters = dbSearchRef.current?.getFilters();
+    const sel = filters?.facadeSel;
+    const facadeId =
+      sel != null && sel !== "all" && sel !== "" ? Number(sel) : null;
+    setAutoFindReel((prev) => ({
+      facadeKey,
+      facadeId,
+      pattern: filters?.pattern ?? "",
+      maxRng: filters?.maxRng ?? "",
+      token: (prev?.token ?? 0) + 1,
+    }));
   }
 
   function clearPattern(pid: number) {
@@ -321,6 +356,20 @@ export default function Home() {
         : builtBallCalls,
     [ballCallsOverride, daubs, builtBallCalls]
   );
+
+  // Apply a reelStop candidate to the result AND copy the whole gaffe (reelStops
+  // + bingoCard + ballCalls) to the clipboard, so the "+" button both fills and
+  // copies in one click. reelStops don't affect ballCalls, so displayBuilt.calls
+  // is already current.
+  const applyReelStops = (rs: number[]) => {
+    setReelStops(rs);
+    const json = JSON.stringify(
+      rs.length
+        ? { reelStops: rs, bingoCard, ballCalls: displayBuilt.calls }
+        : { bingoCard, ballCalls: displayBuilt.calls }
+    );
+    navigator.clipboard?.writeText(json).catch(() => {});
+  };
 
   // True in-game payout (AllPatternsPaid): score the generated draw order so the
   // total includes every pattern the machine would pay — including ones completed
@@ -468,7 +517,7 @@ export default function Home() {
               data={data}
               betKey={betKey}
               bingoCard={bingoCard}
-              onApply={setReelStops}
+              onApply={applyReelStops}
               onCreatePattern={createPatternFromMatch}
               onCreatePatterns={createPatternsFromMatch}
               onSlot={(rs) => reelStripRef.current?.openWithReelStops(rs)}
@@ -541,13 +590,18 @@ export default function Home() {
             <ReelStopFinder
               totalPayout={totalPayout}
               wins={wins}
-              onApply={setReelStops}
+              onApply={applyReelStops}
               onDbReady={(h, f) => {
                 setDbHandle(h);
                 setDbFacades(f);
               }}
               onSlot={(rs) => reelStripRef.current?.openWithReelStops(rs)}
               reelStripLoaded={reelStripLoaded}
+              autoFindFacadeKey={autoFindReel?.facadeKey ?? null}
+              autoFindFacadeId={autoFindReel?.facadeId ?? null}
+              autoFindPattern={autoFindReel?.pattern ?? ""}
+              autoFindMaxRng={autoFindReel?.maxRng ?? ""}
+              autoFindToken={autoFindReel?.token ?? 0}
             />
           )}
         </section>
@@ -568,6 +622,7 @@ export default function Home() {
 
             <GaffeResult
               reelStops={reelStops}
+              onRemoveReelStops={() => setReelStops([])}
               bingoCard={bingoCard}
               built={displayBuilt}
               forcedNames={forcedNames}
@@ -587,6 +642,8 @@ export default function Home() {
               }}
               onOverrideBallCalls={setBallCallsOverride}
             />
+
+            <Notepad />
           </section>
         )}
       </div>
