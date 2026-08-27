@@ -109,8 +109,8 @@ export default function GaffeResult({
         </p>
       ) : (
         <p className="muted small">
-          Select payout rows to splice a pattern&apos;s numbers into ballCalls.
-          Showing the base sequence in draw order.
+          {/* Select payout rows to splice a pattern&apos;s numbers into ballCalls.
+          Showing the base sequence in draw order. */}
         </p>
       )}
 
