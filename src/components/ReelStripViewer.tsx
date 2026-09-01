@@ -36,15 +36,18 @@ const wrap = (n: number, len: number) => ((n % len) + len) % len;
 
 /**
  * Map an RNG value to the landing stop index for a reel.
- * - HPP (weighted .json): the RNG is wrapped over the reel's total weight, then
- *   the symbol whose cumulative range [prevCum, cum) contains it is chosen.
+ * - HPP (weighted .json): the RNG is 1-based (1..totalWeight) and wrapped into
+ *   that range, then the symbol whose cumulative range (prevCum, cum] contains
+ *   it is chosen — a value equal to a symbol's cumulative sum lands on the
+ *   symbol that ends there (e.g. 131 → the stop ending at 131, not the next).
  * - APP (.xml, unweighted): direct positional wrap over the number of stops.
  */
 function rngToIndex(rng: number, reel: ReelStrip): number {
   if (reel.cumWeights && reel.totalWeight) {
-    const v = wrap(rng, reel.totalWeight);
+    const total = reel.totalWeight;
+    const v = ((rng - 1) % total + total) % total + 1; // 1..total
     const cw = reel.cumWeights;
-    for (let i = 0; i < cw.length; i++) if (v < cw[i]) return i; // first cum > v
+    for (let i = 0; i < cw.length; i++) if (v <= cw[i]) return i; // first cum >= v
     return cw.length - 1;
   }
   return wrap(rng, reel.symbols.length);
@@ -161,11 +164,12 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         prev[i] === idx ? prev : prev.map((v, j) => (j === i ? idx : v))
       );
       // For weighted strips a manually chosen stop no longer maps to the loaded
-      // RNG, so make SEARCH use a representative raw value: the stop's lower
-      // cumulative boundary.
+      // RNG, so make SEARCH use a representative raw value: the stop's own
+      // cumulative sum (its upper boundary), which maps back to this stop under
+      // the 1-based (prevCum, cum] rule.
       const reel = reels[i];
       if (reel.cumWeights) {
-        const rngRep = idx === 0 ? 0 : reel.cumWeights[idx - 1];
+        const rngRep = reel.cumWeights[idx];
         setRawValues((prev) =>
           prev[i] === rngRep ? prev : prev.map((v, j) => (j === i ? rngRep : v))
         );

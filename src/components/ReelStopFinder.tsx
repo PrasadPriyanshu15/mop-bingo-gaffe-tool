@@ -172,7 +172,16 @@ export default function ReelStopFinder({
       if (handleRef.current) await db.closeDatabase(handleRef.current);
       const h = await db.openDatabase(file, dbType);
       handleRef.current = h;
-      setOpenedType(dbType);
+      // Use the schema the DB actually opened as, not the picker choice: a file
+      // marked Type 2 (HPP) with no Segment table falls back to Type 1 reads.
+      setOpenedType(h.type);
+      if (h.type !== dbType) {
+        setFileName(
+          `${file.name} (${(file.size / 1024 / 1024).toFixed(0)} MB · ${
+            h.type === "type2" ? "Type 2" : "Type 1"
+          }, no Segment table)`
+        );
+      }
       const list = await db.listFacades(h);
       setFacades(list);
       setFacadeId(list[0]?.facadeId ?? null);

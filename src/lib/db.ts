@@ -75,6 +75,12 @@ export interface DbHandle {
   db: number;
   vfs: any;
   type: DbType;
+  /**
+   * Whether the Award table has a StartState column. Present on classic Type 1
+   * (e.g. HFNG_10k) but absent on Type 2 and on segment-less HPP files, so it is
+   * detected per-file rather than inferred from `type`.
+   */
+  hasStartState: boolean;
 }
 
 /** Read-only VFS that serves a single uploaded File via byte-range reads. */
@@ -190,7 +196,52 @@ export async function openDatabase(
 
   const db = await sqlite3.open_v2("main.db", SQLITE_OPEN_READONLY, vfs.name);
   await sqlite3.exec(db, "PRAGMA query_only=1;");
-  return { sqlite3, db, vfs, type };
+
+  // HPP games ship in two shapes: some carry a Segment table (RngValues split
+  // across SegmentIndex rows — the Type 2 path), some don't. When a file marked
+  // Type 2 has no Segment table, its RngValues live directly on the Presentation
+  // table just like App / Type 1 games, so fall back to the Type 1 read path.
+  let effectiveType = type;
+  if (type === "type2" && !(await tableExists(sqlite3, db, "Segment"))) {
+    effectiveType = "type1";
+  }
+
+  // StartState exists on classic Type 1 Award tables but not on Type 2 or on
+  // segment-less HPP files, so probe the actual columns instead of assuming.
+  const hasStartState = await columnExists(sqlite3, db, "Award", "StartState");
+
+  return { sqlite3, db, vfs, type: effectiveType, hasStartState };
+}
+
+/** True when the open database has a table (not view) named `name`. */
+async function tableExists(
+  sqlite3: any,
+  db: number,
+  name: string
+): Promise<boolean> {
+  const { rows } = await sqlite3.execWithParams(
+    db,
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+    [name]
+  );
+  return rows.length > 0;
+}
+
+/** True when `table` in the open database has a column named `column`. */
+async function columnExists(
+  sqlite3: any,
+  db: number,
+  table: string,
+  column: string
+): Promise<boolean> {
+  // PRAGMA table_info can't be parametrised; the table name is a fixed literal
+  // from our own code, so it is safe to inline.
+  const { rows } = await sqlite3.execWithParams(
+    db,
+    `PRAGMA table_info(${table})`,
+    []
+  );
+  return rows.some((r: any[]) => String(r[1]) === column);
 }
 
 export async function closeDatabase(h: DbHandle): Promise<void> {
@@ -382,8 +433,9 @@ export async function findAwardsByAmount(
   facadeId: number,
   amount: number
 ): Promise<Award[]> {
-  // Type 2's Award table has no StartState column, so select it only for Type 1.
-  if (h.type === "type2") {
+  // Some Award tables (Type 2, and segment-less HPP files) have no StartState
+  // column, so select it only when the probe found it.
+  if (!h.hasStartState) {
     const { rows } = await h.sqlite3.execWithParams(
       h.db,
       "SELECT AwardId,FacadeId,Tier,Amount,Flags,TotalCount,SequenceStart " +
