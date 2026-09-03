@@ -4,6 +4,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -33,6 +34,10 @@ interface Props {
 }
 
 const wrap = (n: number, len: number) => ((n % len) + len) % len;
+
+/** A reel symbol counts as a scatter when its name contains "SCAT" (any case),
+ *  matching Scat / SCAT / SCATTER. */
+const isScatter = (s: string) => s.toUpperCase().includes("SCAT");
 
 /**
  * Map an RNG value to the landing stop index for a reel.
@@ -74,6 +79,71 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     // the real RNG rather than the cumulative-mapped stop index.
     const [rawValues, setRawValues] = useState<(number | undefined)[]>([]);
     const [slotSeq, setSlotSeq] = useState(0);
+
+    // Free-game workflow -------------------------------------------------
+    const fgInputRef = useRef<HTMLInputElement>(null);
+    // Manual arm: enables FREE GAME even without 3+ scatters on the grid.
+    const [freeGameArmed, setFreeGameArmed] = useState(false);
+    // Whether the free-game section (upload + paste + results) is expanded.
+    const [fgOpen, setFgOpen] = useState(false);
+    // The uploaded APP-format free-game reel strips (positional / unweighted).
+    const [fgReels, setFgReels] = useState<ReelStrip[] | null>(null);
+    const [fgFileName, setFgFileName] = useState<string | null>(null);
+    const [fgError, setFgError] = useState<string | null>(null);
+    // Raw pasted number list (mixed reel stops + long RNG numbers).
+    const [fgText, setFgText] = useState("");
+    // Slot grid controls for the free-game viewer (mirrors the main viewer).
+    const [fgRows, setFgRows] = useState(3);
+    const [fgOffset, setFgOffset] = useState(1);
+
+    // Count scatter symbols visible in the slot area (rows × all reels). The
+    // visible cell at row k of reel i is the strip index landing at `offset`
+    // shifted up by k — the same window the scroll math (below) renders.
+    const scatterCount = useMemo(() => {
+      if (!reels) return 0;
+      let count = 0;
+      reels.forEach((r, i) => {
+        const L = r.symbols.length;
+        const landing = positions[i] ?? 0;
+        for (let k = 0; k < rows; k++) {
+          if (isScatter(r.symbols[wrap(landing - offset + k, L)])) count++;
+        }
+      });
+      return count;
+    }, [reels, positions, offset, rows]);
+
+    const canFreeGame = freeGameArmed || scatterCount >= 3;
+
+    // Split the pasted list into free-spin sets: keep only 1–2 digit numbers
+    // (0–99 reel stops), drop the long RNG numbers, then chunk into groups of 5.
+    const fgSets = useMemo(() => {
+      const nums = fgText.split(/[^0-9]+/).filter(Boolean).map(Number);
+      const small = nums.filter((n) => n <= 99);
+      const sets: number[][] = [];
+      for (let i = 0; i + 5 <= small.length; i += 5) sets.push(small.slice(i, i + 5));
+      return sets;
+    }, [fgText]);
+
+    async function handleFgFile(file: File) {
+      setFgError(null);
+      try {
+        const text = await file.text();
+        const isJson = file.name.toLowerCase().endsWith(".json");
+        // Weights (if the JSON carries any) are ignored — free-game stops are
+        // a direct 0-based position into each reel's symbol list.
+        const parsed = isJson ? parseReelStripsJson(text) : parseReelStrips(text);
+        setFgReels(parsed);
+        setFgFileName(file.name);
+      } catch (e) {
+        setFgReels(null);
+        setFgFileName(null);
+        setFgError(
+          e instanceof Error
+            ? e.message
+            : "Failed to parse the free-game reel file (.xml / .json)."
+        );
+      }
+    }
 
     // Apply a requested imperative scroll once the columns are in the DOM.
     useEffect(() => {
@@ -336,21 +406,220 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                       [{positions.join(", ")}]
                     </code>
                   </div>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => onSearch(filterStr)}
-                    title="Copy these positions into the DB amount search filter and search"
-                  >
-                    SEARCH
-                  </button>
+                  <div className="reelstrip-actions">
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => onSearch(filterStr)}
+                      title="Copy these positions into the DB amount search filter and search"
+                    >
+                      SEARCH
+                    </button>
+                    <button
+                      type="button"
+                      className={"btn" + (canFreeGame ? " free-game-armed" : "")}
+                      disabled={!canFreeGame}
+                      onClick={() => setFgOpen(true)}
+                      title={
+                        canFreeGame
+                          ? "Open the free-game symbol extractor"
+                          : "Land 3+ scatters on the grid, or arm manually, to enable"
+                      }
+                    >
+                      FREE GAME
+                    </button>
+                    <label className="free-game-arm" title="Enable FREE GAME without 3+ scatters">
+                      <input
+                        type="checkbox"
+                        checked={freeGameArmed}
+                        onChange={(e) => setFreeGameArmed(e.target.checked)}
+                      />
+                      arm
+                    </label>
+                  </div>
                 </div>
 
                 <p className="muted small">
-                  {/* Scroll a reel to move it; row {offset} (highlighted) is the
-                  landing row. SEARCH sends the positions to the DB amount
-                  search filter. */}
+                  Scatters in view: {scatterCount}
+                  {scatterCount >= 3 ? " — FREE GAME triggered" : ""}
                 </p>
+
+                {fgOpen && (
+                  <div className="free-game">
+                    <div className="panel-title">
+                      Free game — symbol extractor
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        onClick={() => setFgOpen(false)}
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="upload-row">
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => fgInputRef.current?.click()}
+                      >
+                        Choose free-game reels .xml / .json…
+                      </button>
+                      <input
+                        ref={fgInputRef}
+                        type="file"
+                        accept=".xml,.json,text/xml,application/xml,application/json"
+                        hidden
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void handleFgFile(f);
+                          e.target.value = "";
+                        }}
+                      />
+                      {fgFileName && (
+                        <span className="loaded-name">{fgFileName}</span>
+                      )}
+                    </div>
+
+                    {fgError && <p className="error">{fgError}</p>}
+
+                    <textarea
+                      className="ws-textarea"
+                      value={fgText}
+                      onChange={(e) => setFgText(e.target.value)}
+                      placeholder="Paste the free-game data (comma/space separated). 5 consecutive 1–2 digit numbers make one spin; long RNG numbers are ignored."
+                      spellCheck={false}
+                    />
+
+                    {!fgReels && fgText.trim() !== "" && (
+                      <p className="muted small">
+                        Upload the free-game reel file above to resolve symbols.
+                      </p>
+                    )}
+
+                    {fgReels && fgSets.length > 0 && (
+                      <>
+                        <div className="db-controls">
+                          <div className="db-field">
+                            <span className="db-label">Reels (columns)</span>
+                            <div className="db-amount">{fgReels.length}</div>
+                          </div>
+                          <label className="db-field">
+                            <span className="db-label">Rows</span>
+                            <input
+                              className="select reelstrip-rows"
+                              type="number"
+                              min={1}
+                              max={50}
+                              value={fgRows}
+                              onChange={(e) => {
+                                const n = Math.max(
+                                  1,
+                                  Math.min(50, Math.floor(Number(e.target.value) || 1))
+                                );
+                                setFgRows(n);
+                                if (fgOffset > n - 1) setFgOffset(n - 1);
+                              }}
+                            />
+                          </label>
+                          <label className="db-field">
+                            <span className="db-label">Offset (landing row)</span>
+                            <select
+                              className="select"
+                              value={fgOffset}
+                              onChange={(e) => setFgOffset(Number(e.target.value))}
+                            >
+                              {Array.from({ length: fgRows }, (_, i) => i).map(
+                                (i) => (
+                                  <option key={i} value={i}>
+                                    {i}
+                                  </option>
+                                )
+                              )}
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className="free-game-count">
+                          {fgSets.length} free spin
+                          {fgSets.length === 1 ? "" : "s"}
+                        </div>
+
+                        <div className="free-game-sets">
+                          {fgSets.map((set, si) => {
+                            // Landing strip index per reel for this spin.
+                            const landings = fgReels.map((_, j) => set[j] ?? 0);
+                            // Count scatters visible in this spin's slot window.
+                            let scat = 0;
+                            fgReels.forEach((r, j) => {
+                              const L = r.symbols.length;
+                              for (let k = 0; k < fgRows; k++) {
+                                if (
+                                  isScatter(
+                                    r.symbols[wrap(landings[j] - fgOffset + k, L)]
+                                  )
+                                )
+                                  scat++;
+                              }
+                            });
+                            return (
+                              <div key={si} className="free-game-set">
+                                <div className="free-game-set-head">
+                                  <span className="reelstop-pid">Set {si + 1}</span>
+                                  <code className="free-game-seq">
+                                    {set.join(", ")}
+                                  </code>
+                                  {scat >= 2 && (
+                                    <span className="free-game-scat-badge">
+                                      {scat} SCAT
+                                    </span>
+                                  )}
+                                </div>
+                                <div
+                                  className={
+                                    "fg-grid" + (scat >= 2 ? " has-scatter" : "")
+                                  }
+                                  style={{
+                                    gridTemplateColumns: `repeat(${fgReels.length}, minmax(0, 1fr))`,
+                                  }}
+                                >
+                                  {fgReels.map((r, j) => (
+                                    <div key={`h${j}`} className="fg-grid-head">
+                                      {r.name}
+                                    </div>
+                                  ))}
+                                  {Array.from({ length: fgRows }, (_, k) => k).map(
+                                    (k) =>
+                                      fgReels.map((r, j) => {
+                                        const L = r.symbols.length;
+                                        const sym =
+                                          r.symbols[wrap(landings[j] - fgOffset + k, L)];
+                                        const landed = k === fgOffset;
+                                        const scatCell = isScatter(sym);
+                                        return (
+                                          <div
+                                            key={`${k}-${j}`}
+                                            className={
+                                              "fg-cell" +
+                                              (landed ? " landed" : "") +
+                                              (scatCell ? " scat" : "")
+                                            }
+                                            title={sym}
+                                          >
+                                            {sym}
+                                          </div>
+                                        );
+                                      })
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>

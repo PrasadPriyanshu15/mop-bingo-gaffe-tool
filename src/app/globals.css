@@ -1389,6 +1389,143 @@ body {
   color: var(--marked);
 }
 
+/* Free-game symbol extractor -------------------------------------------- */
+.reelstrip-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* Armed FREE GAME button "glows" green so a scatter trigger is obvious. */
+.btn.free-game-armed {
+  background: var(--free);
+  color: #06301c;
+  box-shadow: 0 0 0 1px var(--free), 0 0 10px rgba(74, 217, 145, 0.6);
+}
+.btn.free-game-armed:hover {
+  background: var(--free);
+  box-shadow: 0 0 0 1px var(--free), 0 0 14px rgba(74, 217, 145, 0.85);
+}
+.free-game-arm {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.free-game-arm input {
+  accent-color: var(--free);
+}
+.free-game {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.free-game .panel-title {
+  margin-bottom: 0;
+}
+.free-game .ws-textarea {
+  min-height: 72px;
+}
+.free-game-sets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.free-game-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--free);
+}
+.free-game-set {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
+.free-game-set-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.free-game-seq {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.free-game-scat-badge {
+  margin-left: auto;
+  background: rgba(74, 217, 145, 0.18);
+  color: var(--free);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+/* Per-spin slot grid: reels as columns, rows we set, landing row = offset. */
+.fg-grid {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--border);
+}
+.fg-grid.has-scatter {
+  box-shadow: 0 0 0 1px var(--free), 0 0 8px rgba(74, 217, 145, 0.45);
+}
+.fg-grid-head {
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 10.5px;
+  text-align: center;
+  padding: 3px 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fg-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  background: var(--panel);
+  font-size: 11px;
+  padding: 0 3px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The offset (landing) row — highlighted like the main viewer's payline. */
+.fg-cell.landed {
+  background: rgba(76, 141, 255, 0.14);
+  color: var(--marked);
+  font-weight: 700;
+}
+/* A scatter symbol anywhere in the visible slot. */
+.fg-cell.scat {
+  background: rgba(74, 217, 145, 0.18);
+  color: var(--free);
+  font-weight: 700;
+}
+.fg-cell.landed.scat {
+  background: rgba(74, 217, 145, 0.3);
+}
+
 .award-results {
   display: flex;
   flex-direction: column;
