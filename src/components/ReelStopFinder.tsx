@@ -20,8 +20,9 @@ interface Props {
   onApply: (reelStops: number[]) => void;
   /** Report the opened DB handle upward so other panels can query it. */
   onDbReady: (handle: DbHandle | null, facades: Facade[]) => void;
-  /** Load a reelStop into the reelStrip viewer. */
-  onSlot: (reelStops: number[]) => void;
+  /** Load a reelStop into the reelStrip viewer. `presentationId` (HPP / Type 2)
+   *  lets FREE GAME auto-load that presentation's segment-2+ RNG. */
+  onSlot: (reelStops: number[], presentationId?: number) => void;
   /** Whether a reelStrip .xml is loaded (enables the "slot" button). */
   reelStripLoaded: boolean;
   /** Bet line (facadeKey) a "create pattern" click wants pre-selected here. */

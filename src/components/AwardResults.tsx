@@ -20,8 +20,9 @@ interface Props {
   onApply: (reelStops: number[]) => void;
   /** Message when `results` is empty. */
   emptyText: string;
-  /** Load a reelStop into the reelStrip viewer (enabled only if xml loaded). */
-  onSlot?: (reelStops: number[]) => void;
+  /** Load a reelStop into the reelStrip viewer (enabled only if xml loaded).
+   *  `presentationId` (HPP / Type 2) lets FREE GAME auto-load segment-2+ RNG. */
+  onSlot?: (reelStops: number[], presentationId?: number) => void;
   /** Whether a reelStrip .xml has been loaded (enables the "slot" button). */
   reelStripLoaded?: boolean;
   /** With an active filter, drop award cards that have no matching reelStop
@@ -170,7 +171,7 @@ export default function AwardResults({
                           type="button"
                           className="reelstop-btn reelstop-slot"
                           disabled={!reelStripLoaded}
-                          onClick={() => onSlot(rs)}
+                          onClick={() => onSlot(rs, cand.presentationId)}
                           title={
                             reelStripLoaded
                               ? "Load into the reelStrip viewer"

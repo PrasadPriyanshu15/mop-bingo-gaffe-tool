@@ -13,6 +13,7 @@ import {
   parseReelStripsJson,
   type ReelStrip,
 } from "@/lib/parseReelStrips";
+import type { DbHandle, Facade, MatchedReelStop } from "@/lib/db";
 
 /** Height of one symbol block, in px — used for the grid + payline math. */
 const CELL = 44;
@@ -22,8 +23,10 @@ const MIN_COL = 58;
 const SLOT_REELS = 5;
 
 export interface ReelStripHandle {
-  /** Expand the viewer and land the first reels on these reelStop indices. */
-  openWithReelStops: (reelStops: number[]) => void;
+  /** Expand the viewer and land the first reels on these reelStop indices.
+   *  `presentationId` (HPP / Type 2 candidates) lets FREE GAME auto-load that
+   *  presentation's segment-2+ RNG into the free-game extractor. */
+  openWithReelStops: (reelStops: number[], presentationId?: number) => void;
 }
 
 interface Props {
@@ -31,6 +34,14 @@ interface Props {
   onLoadedChange: (loaded: boolean) => void;
   /** Send the current offset-row positions to the DB amount search. */
   onSearch: (filter: string) => void;
+  /** Open outcomes DB — lets FREE GAME pull segment-2+ RNG for HPP candidates,
+   *  and powers the symbol search. */
+  dbHandle: DbHandle | null;
+  /** Bet lines from the open DB — the symbol search scopes to one of these. */
+  facades: Facade[];
+  /** Push a chosen reelStop into the main generated gaffe output (symbol-search
+   *  results' "+" button). */
+  onApply: (reelStops: number[]) => void;
 }
 
 const wrap = (n: number, len: number) => ((n % len) + len) % len;
@@ -59,7 +70,10 @@ function rngToIndex(rng: number, reel: ReelStrip): number {
 }
 
 const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
-  function ReelStripViewer({ onLoadedChange, onSearch }, ref) {
+  function ReelStripViewer(
+    { onLoadedChange, onSearch, dbHandle, facades, onApply },
+    ref
+  ) {
     const inputRef = useRef<HTMLInputElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const colRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -90,11 +104,56 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     const [fgReels, setFgReels] = useState<ReelStrip[] | null>(null);
     const [fgFileName, setFgFileName] = useState<string | null>(null);
     const [fgError, setFgError] = useState<string | null>(null);
-    // Raw pasted number list (mixed reel stops + long RNG numbers).
+    // Raw pasted number list (mixed reel stops + long RNG numbers). Auto-filled
+    // from the loaded candidate's segment-2+ RNG when available, but freely
+    // editable — clear it and paste custom data if the auto data is wrong.
     const [fgText, setFgText] = useState("");
+    // PresentationId of the candidate loaded via `openWithReelStops` (HPP /
+    // Type 2 only), so FREE GAME can pull that presentation's free-game RNG.
+    const [fgPid, setFgPid] = useState<number | null>(null);
+    // Status of an auto-load of segment-2+ RNG from the DB.
+    const [fgAutoLoading, setFgAutoLoading] = useState(false);
+    const [fgAutoNote, setFgAutoNote] = useState<string | null>(null);
     // Slot grid controls for the free-game viewer (mirrors the main viewer).
     const [fgRows, setFgRows] = useState(3);
     const [fgOffset, setFgOffset] = useState(1);
+
+    // Symbol search -----------------------------------------------------
+    // Whether the symbol-search section is expanded.
+    const [symOpen, setSymOpen] = useState(false);
+    // Selected target symbol per reel (null = any). Length tracks reels.length.
+    const [symSel, setSymSel] = useState<(string | null)[]>([]);
+    // Bet line (DB facadeId) the symbol search scopes to.
+    const [symFacadeId, setSymFacadeId] = useState<number | null>(null);
+    const [symSearching, setSymSearching] = useState(false);
+    const [symError, setSymError] = useState<string | null>(null);
+    const [symResults, setSymResults] = useState<MatchedReelStop[] | null>(null);
+    const [symCapped, setSymCapped] = useState(false);
+    const [symProgress, setSymProgress] = useState<{
+      done: number;
+      total: number;
+      found: number;
+    } | null>(null);
+    const [symCopied, setSymCopied] = useState<string | null>(null);
+    const [symApplied, setSymApplied] = useState<string | null>(null);
+    // Bumped on every new symbol search / cancel; a running scan bails when it
+    // sees its id is stale.
+    const symRunId = useRef(0);
+
+    // Default the symbol-search bet line to the first facade once the DB opens.
+    useEffect(() => {
+      if (symFacadeId == null && facades.length > 0)
+        setSymFacadeId(facades[0].facadeId);
+    }, [facades, symFacadeId]);
+
+    // Distinct symbols per reel, for the dropdowns (sorted for scanning).
+    const symOptions = useMemo(
+      () =>
+        (reels ?? []).map((r) =>
+          Array.from(new Set(r.symbols)).sort((a, b) => a.localeCompare(b))
+        ),
+      [reels]
+    );
 
     // Count scatter symbols visible in the slot area (rows × all reels). The
     // visible cell at row k of reel i is the strip index landing at `offset`
@@ -145,6 +204,140 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       }
     }
 
+    // Pull this presentation's free-game RNG (segment index 2+) from the DB and
+    // drop it into the paste box. `force` overwrites whatever is there; without
+    // it, existing text (a manual paste or a previous auto-load) is left alone.
+    async function autoFillFreeGame(force = false) {
+      if (!dbHandle || fgPid == null) return;
+      if (!force && fgText.trim() !== "") return;
+      setFgAutoLoading(true);
+      setFgAutoNote(null);
+      try {
+        const db = await import("@/lib/db");
+        const rng = await db.getFreeGameRng(dbHandle, fgPid);
+        if (rng.trim() === "") {
+          setFgAutoNote(
+            `No free-game segment (index 2+) for P#${fgPid} — paste data manually.`
+          );
+        } else {
+          setFgText(rng);
+          setFgAutoNote(`Loaded free-game RNG from P#${fgPid}, segment 2+.`);
+        }
+      } catch (e) {
+        setFgAutoNote(
+          e instanceof Error
+            ? `Free-game auto-load failed: ${e.message}`
+            : "Free-game auto-load failed — paste data manually."
+        );
+      } finally {
+        setFgAutoLoading(false);
+      }
+    }
+
+    // Open the free-game extractor and, for HPP candidates, auto-load the
+    // segment-2+ RNG (only when the box is empty, so manual edits are kept).
+    function openFreeGame() {
+      setFgOpen(true);
+      if (fgPid != null && fgText.trim() === "") void autoFillFreeGame();
+    }
+
+    // Symbol search: scan the selected bet line's RNG candidates and keep those
+    // whose reel i shows the chosen symbol anywhere in its visible window (the
+    // current rows × offset the grid renders), for every reel that has a choice.
+    // The RNG value still drives the landing (offset) row; the match just looks
+    // across the whole visible window rather than only that row.
+    async function runSymbolSearch() {
+      if (!dbHandle || !reels) return;
+      if (symFacadeId == null) {
+        setSymError("Select a bet line to search.");
+        return;
+      }
+      const wanted = reels.map((_, i) => symSel[i] ?? null);
+      if (!wanted.some((s) => s != null)) {
+        setSymError("Choose at least one symbol in the dropdowns below the grid.");
+        return;
+      }
+
+      // Snapshot the grid window so the predicate is stable for this run.
+      const win = { rows, offset };
+      const predicate = (values: number[]): boolean => {
+        for (let i = 0; i < reels.length; i++) {
+          const want = wanted[i];
+          if (!want) continue;
+          const rng = values[i];
+          if (rng == null) return false;
+          const reel = reels[i];
+          const L = reel.symbols.length;
+          const p = rngToIndex(rng, reel);
+          let found = false;
+          for (let k = 0; k < win.rows; k++) {
+            if (reel.symbols[wrap(p - win.offset + k, L)] === want) {
+              found = true;
+              break;
+            }
+          }
+          if (!found) return false;
+        }
+        return true;
+      };
+
+      const myId = ++symRunId.current;
+      const stale = () => symRunId.current !== myId;
+      setSymSearching(true);
+      setSymError(null);
+      setSymResults(null);
+      setSymCapped(false);
+      setSymProgress({ done: 0, total: 0, found: 0 });
+      try {
+        const db = await import("@/lib/db");
+        const { results, capped } = await db.findReelStopsMatching(
+          dbHandle,
+          symFacadeId,
+          predicate,
+          {
+            maxResults: 100,
+            onProgress: (done, total, found) => {
+              if (!stale()) setSymProgress({ done, total, found });
+            },
+            shouldStop: stale,
+          }
+        );
+        if (stale()) return;
+        setSymResults(results);
+        setSymCapped(capped);
+      } catch (e) {
+        if (!stale())
+          setSymError(e instanceof Error ? e.message : "Symbol search failed.");
+      } finally {
+        if (!stale()) {
+          setSymSearching(false);
+          setSymProgress(null);
+        }
+      }
+    }
+
+    function cancelSymbolSearch() {
+      symRunId.current++;
+      setSymSearching(false);
+      setSymProgress(null);
+    }
+
+    async function copySym(text: string) {
+      try {
+        await navigator.clipboard.writeText(text);
+        setSymCopied(text);
+        setTimeout(() => setSymCopied(null), 1200);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    function applySym(rs: number[], text: string) {
+      onApply(rs);
+      setSymApplied(text);
+      setTimeout(() => setSymApplied(null), 1200);
+    }
+
     // Apply a requested imperative scroll once the columns are in the DOM.
     useEffect(() => {
       const target = scrollTargetRef.current;
@@ -184,6 +377,11 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         setOpen(true);
         onLoadedChange(true);
         requestScroll(pos);
+        // A new strip changes the symbol set — clear any symbol search state.
+        setSymSel(parsed.map(() => null));
+        setSymResults(null);
+        setSymError(null);
+        setSymProgress(null);
       } catch (e) {
         setReels(null);
         setPositions([]);
@@ -197,30 +395,40 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       }
     }
 
+    // Land an RNG candidate on the slot grid. Shared by the imperative handle
+    // (used by the DB finders' "slot" buttons) and the symbol-search results.
+    function loadReelStops(reelStops: number[], presentationId?: number) {
+      if (!reels) return;
+      // A fresh candidate: remember its presentation for FREE GAME auto-load
+      // and clear any previous free-game paste/notes so it re-fills cleanly.
+      setFgPid(presentationId ?? null);
+      setFgText("");
+      setFgAutoNote(null);
+      setFgOpen(false);
+      // Carry the FULL candidate into the viewer (every reelStop value), so
+      // the readout and SEARCH reflect all reels — not just the first 5.
+      // Each RNG value is mapped to a landing stop index: cumulative weights
+      // for HPP (.json) strips, direct positional wrap for APP (.xml).
+      const pos = reelStops.map((v, i) =>
+        reels[i] ? rngToIndex(v ?? 0, reels[i]) : v
+      );
+      setOpen(true);
+      setPositions(pos);
+      // Preserve the raw RNG values so SEARCH can send them for HPP strips.
+      setRawValues(reelStops.slice());
+      // Only the first SLOT_REELS reels physically land on the slot grid; the
+      // remaining values stay in `positions` (leave those reels untouched).
+      requestScroll(pos.map((v, i) => (i < SLOT_REELS ? v : undefined)));
+      requestAnimationFrame(() =>
+        panelRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        })
+      );
+    }
+
     useImperativeHandle(ref, () => ({
-      openWithReelStops(reelStops: number[]) {
-        if (!reels) return;
-        // Carry the FULL candidate into the viewer (every reelStop value), so
-        // the readout and SEARCH reflect all reels — not just the first 5.
-        // Each RNG value is mapped to a landing stop index: cumulative weights
-        // for HPP (.json) strips, direct positional wrap for APP (.xml).
-        const pos = reelStops.map((v, i) =>
-          reels[i] ? rngToIndex(v ?? 0, reels[i]) : v
-        );
-        setOpen(true);
-        setPositions(pos);
-        // Preserve the raw RNG values so SEARCH can send them for HPP strips.
-        setRawValues(reelStops.slice());
-        // Only the first SLOT_REELS reels physically land on the slot grid; the
-        // remaining values stay in `positions` (leave those reels untouched).
-        requestScroll(pos.map((v, i) => (i < SLOT_REELS ? v : undefined)));
-        requestAnimationFrame(() =>
-          panelRef.current?.scrollIntoView({
-            behavior: "smooth",
-            block: "nearest",
-          })
-        );
-      },
+      openWithReelStops: loadReelStops,
     }));
 
     // Read back which strip index sits on the offset row after a manual scroll.
@@ -397,6 +605,200 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                   </div>
                 </div>
 
+                <div className="sym-search">
+                  <button
+                    type="button"
+                    className="panel-title panel-title-toggle sym-search-toggle"
+                    onClick={() => setSymOpen((v) => !v)}
+                    aria-expanded={symOpen}
+                  >
+                    <span>
+                      {symOpen ? "▾" : "▸"} Search by symbol — matches anywhere
+                      in the visible grid ({rows} row{rows === 1 ? "" : "s"})
+                    </span>
+                  </button>
+
+                  {symOpen && (
+                  <>
+                  <div className="sym-dropdowns">
+                    {reels.map((r, i) => (
+                      <label key={i} className="db-field">
+                        <span className="db-label">{r.name}</span>
+                        <select
+                          className="select"
+                          value={symSel[i] ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value || null;
+                            setSymSel((prev) => {
+                              const next = reels.map(
+                                (_, j) => prev[j] ?? null
+                              );
+                              next[i] = v;
+                              return next;
+                            });
+                          }}
+                        >
+                          <option value="">(any)</option>
+                          {symOptions[i]?.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="sym-search-controls">
+                    <label className="db-field db-field-grow">
+                      <span className="db-label">Facade (bet line)</span>
+                      <select
+                        className="select"
+                        value={symFacadeId ?? ""}
+                        onChange={(e) =>
+                          setSymFacadeId(
+                            e.target.value ? Number(e.target.value) : null
+                          )
+                        }
+                      >
+                        {facades.map((f) => (
+                          <option key={f.facadeId} value={f.facadeId}>
+                            {f.facadeKey}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => void runSymbolSearch()}
+                      disabled={symSearching}
+                      title="Find RNG whose reels show the selected symbols anywhere in the visible grid (any amount, this bet line)"
+                    >
+                      {symSearching ? "Searching…" : "Search symbols"}
+                    </button>
+                    {symSearching && (
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        onClick={cancelSymbolSearch}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                    {(symSel.some((s) => s) || symResults) && (
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        onClick={() => {
+                          setSymSel(reels.map(() => null));
+                          setSymResults(null);
+                          setSymError(null);
+                        }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {symProgress && (
+                    <p className="muted small">
+                      Scanned {symProgress.done} / {symProgress.total} awards ·{" "}
+                      {symProgress.found} found…
+                    </p>
+                  )}
+                  {symError && <p className="error">{symError}</p>}
+
+                  {symResults &&
+                    (symResults.length === 0 ? (
+                      <p className="muted small">
+                        No RNG in this bet line shows those symbols in the
+                        visible grid.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="muted small">
+                          {symResults.length} match
+                          {symResults.length === 1 ? "" : "es"}
+                          {symCapped ? " (first 100)" : ""}:
+                        </p>
+                        <div className="reelstop-list">
+                          {symResults.map((m, i) => {
+                            const text = `[${m.values.join(",")}]`;
+                            // Full RNG feeds copy/apply/slot; show only a few
+                            // leading values inline so the row stays compact.
+                            const preview =
+                              m.values.length > 8
+                                ? `[${m.values.slice(0, 8).join(",")}, …+${
+                                    m.values.length - 8
+                                  }]`
+                                : text;
+                            return (
+                              <div key={i} className="reelstop sym-result">
+                                <div className="sym-result-meta">
+                                  <span
+                                    className="reelstop-pid"
+                                    title="Award amount"
+                                  >
+                                    amt {m.amount.toLocaleString()}
+                                  </span>
+                                  <span
+                                    className="reelstop-pid"
+                                    title="AwardId"
+                                  >
+                                    A#{m.awardId}
+                                  </span>
+                                  {m.presentationId != null && (
+                                    <span
+                                      className="reelstop-pid"
+                                      title="PresentationId"
+                                    >
+                                      P#{m.presentationId}
+                                    </span>
+                                  )}
+                                </div>
+                                <span
+                                  className="reelstop-vals"
+                                  title={text}
+                                >
+                                  {preview}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="reelstop-btn reelstop-apply"
+                                  onClick={() => applySym(m.values, text)}
+                                  title="Use in gaffe result"
+                                >
+                                  {symApplied === text ? "✓" : "+"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="reelstop-btn"
+                                  onClick={() => copySym(text)}
+                                  title="Copy reelStops"
+                                >
+                                  {symCopied === text ? "✓" : "copy"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="reelstop-btn reelstop-slot"
+                                  onClick={() =>
+                                    loadReelStops(m.values, m.presentationId)
+                                  }
+                                  title="Land this RNG on the slot grid above"
+                                >
+                                  slot
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ))}
+                  </>
+                  )}
+                </div>
+
                 <div className="reelstrip-result">
                   <div className="db-field">
                     <span className="db-label">
@@ -419,7 +821,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                       type="button"
                       className={"btn" + (canFreeGame ? " free-game-armed" : "")}
                       disabled={!canFreeGame}
-                      onClick={() => setFgOpen(true)}
+                      onClick={openFreeGame}
                       title={
                         canFreeGame
                           ? "Open the free-game symbol extractor"
@@ -456,6 +858,28 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                         Close
                       </button>
                     </div>
+
+                    {fgPid != null && (
+                      <div className="upload-row">
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          disabled={fgAutoLoading}
+                          onClick={() => void autoFillFreeGame(true)}
+                          title="Reload this presentation's segment-2+ RNG (overwrites the box)"
+                        >
+                          {fgAutoLoading
+                            ? "Loading…"
+                            : "Auto-load segment 2+ RNG"}
+                        </button>
+                        <span className="reelstop-pid" title="PresentationId">
+                          P#{fgPid}
+                        </span>
+                        {fgAutoNote && (
+                          <span className="muted small">{fgAutoNote}</span>
+                        )}
+                      </div>
+                    )}
 
                     <div className="upload-row">
                       <button

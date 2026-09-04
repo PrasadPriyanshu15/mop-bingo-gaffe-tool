@@ -470,6 +470,108 @@ export async function findAwardsByAmount(
   }));
 }
 
+/**
+ * Every award for a bet line, regardless of amount — used by the reelStrip
+ * viewer's symbol search, which ignores amount and scans the whole facade.
+ * Ordered by amount so results span the payout range. Column selection mirrors
+ * findAwardsByAmount (StartState only when the probe found it).
+ */
+export async function findAwardsByFacade(
+  h: DbHandle,
+  facadeId: number
+): Promise<Award[]> {
+  if (!h.hasStartState) {
+    const { rows } = await h.sqlite3.execWithParams(
+      h.db,
+      "SELECT AwardId,FacadeId,Tier,Amount,Flags,TotalCount,SequenceStart " +
+        "FROM Award WHERE FacadeId=? ORDER BY Amount,AwardId",
+      [facadeId]
+    );
+    return rows.map((r: any[]) => ({
+      awardId: Number(r[0]),
+      facadeId: Number(r[1]),
+      tier: Number(r[2]),
+      amount: Number(r[3]),
+      flags: String(r[4]),
+      totalCount: Number(r[5]),
+      sequenceStart: Number(r[6]),
+    }));
+  }
+  const { rows } = await h.sqlite3.execWithParams(
+    h.db,
+    "SELECT AwardId,FacadeId,Tier,Amount,Flags,StartState,TotalCount,SequenceStart " +
+      "FROM Award WHERE FacadeId=? ORDER BY Amount,AwardId",
+    [facadeId]
+  );
+  return rows.map((r: any[]) => ({
+    awardId: Number(r[0]),
+    facadeId: Number(r[1]),
+    tier: Number(r[2]),
+    amount: Number(r[3]),
+    flags: String(r[4]),
+    startState: r[5] == null ? null : String(r[5]),
+    totalCount: Number(r[6]),
+    sequenceStart: Number(r[7]),
+  }));
+}
+
+/** One reelStop candidate the symbol search kept, with the award context needed
+ *  to show its amount and reuse it downstream. */
+export interface MatchedReelStop {
+  values: number[];
+  presentationId?: number;
+  amount: number;
+  awardId: number;
+}
+
+/**
+ * Scan a bet line's awards (any amount) for reelStop candidates that satisfy a
+ * caller-supplied predicate — used by the reelStrip viewer's symbol search,
+ * where "does symbol X show anywhere in reel i's visible window" can't be
+ * expressed in SQL (it depends on the loaded reelStrip + weights). Reads up to
+ * `perAwardCap` presentations per award, stops at `maxResults` total, reports
+ * progress per award, and bails when `shouldStop` turns true (cancel).
+ */
+export async function findReelStopsMatching(
+  h: DbHandle,
+  facadeId: number,
+  predicate: (values: number[]) => boolean,
+  opts?: {
+    maxResults?: number;
+    perAwardCap?: number;
+    onProgress?: (done: number, total: number, found: number) => void;
+    shouldStop?: () => boolean;
+  }
+): Promise<{ results: MatchedReelStop[]; capped: boolean }> {
+  const maxResults = opts?.maxResults ?? 100;
+  const perAwardCap = opts?.perAwardCap ?? 500;
+  const awards = await findAwardsByFacade(h, facadeId);
+  const results: MatchedReelStop[] = [];
+  let capped = false;
+  for (let i = 0; i < awards.length; i++) {
+    if (opts?.shouldStop?.()) break;
+    const award = awards[i];
+    const cands = await getReelStops(h, award, perAwardCap);
+    for (const c of cands) {
+      if (predicate(c.values)) {
+        results.push({
+          values: c.values,
+          presentationId: c.presentationId,
+          amount: award.amount,
+          awardId: award.awardId,
+        });
+        if (results.length >= maxResults) {
+          capped = true;
+          break;
+        }
+      }
+    }
+    opts?.onProgress?.(i + 1, awards.length, results.length);
+    if (capped) break;
+  }
+  return { results, capped };
+}
+
 /** Parse a RngValues string like "36,28,14,4,31,0,0," into reel stops. */
 function parseRng(value: unknown): number[] {
   return String(value ?? "")
@@ -585,4 +687,32 @@ async function getSegmentReelStops(
     out.push({ values, presentationId: pid });
   }
   return out;
+}
+
+/**
+ * The free-game RNG values for one presentation (HPP / Type 2). A presentation's
+ * RNG is split across Segment rows: SegmentIndex 1 is the base game, 2+ is the
+ * free-game continuation. This reads that presentation's segments with
+ * SegmentIndex >= fromIndex (default 2) in SegmentIndex order and concatenates
+ * their RngValues, returning the raw comma-separated string — the same shape the
+ * free-game extractor would otherwise have pasted in by hand. Empty when the
+ * presentation has no such segment (no free game was triggered) or the DB is not
+ * Type 2.
+ */
+export async function getFreeGameRng(
+  h: DbHandle,
+  presentationId: number,
+  fromIndex = 2
+): Promise<string> {
+  if (h.type !== "type2") return "";
+  const { rows } = await h.sqlite3.execWithParams(
+    h.db,
+    "SELECT RngValues FROM Segment WHERE PresentationId=? AND SegmentIndex>=? " +
+      "ORDER BY SegmentIndex",
+    [presentationId, fromIndex]
+  );
+  return rows
+    .map((r: any[]) => String(r[0] ?? "").trim())
+    .filter(Boolean)
+    .join(",");
 }

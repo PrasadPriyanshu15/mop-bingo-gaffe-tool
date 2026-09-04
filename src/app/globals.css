@@ -34,7 +34,7 @@ body {
 }
 
 .app {
-  max-width: 1200px;
+  max-width: 1500px;
   margin: 0 auto;
   padding: 24px 20px 80px;
 }
@@ -52,14 +52,14 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 380px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
   align-items: start;
 }
 
 @media (max-width: 1180px) {
   .layout {
-    grid-template-columns: 320px minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .col-result {
     grid-column: 1 / -1;
@@ -1363,6 +1363,57 @@ body {
 .reel-cell.landed {
   color: var(--marked);
   font-weight: 700;
+}
+
+/* Symbol search (visible-grid) ------------------------------------------ */
+.sym-search {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.sym-search-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sym-dropdowns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+.sym-dropdowns .db-field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.sym-dropdowns .select {
+  padding-left: 6px;
+  padding-right: 4px;
+}
+.sym-search-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sym-search-toggle {
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* Symbol-search result rows carry a meta line (amount · award · presentation)
+   above the RNG preview, so let the row wrap. */
+.sym-result {
+  flex-wrap: wrap;
+}
+.sym-result-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-basis: 100%;
 }
 .reelstrip-result {
   display: flex;

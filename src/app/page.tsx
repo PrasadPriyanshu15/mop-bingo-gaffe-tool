@@ -546,6 +546,9 @@ export default function Home() {
               ref={reelStripRef}
               onLoadedChange={setReelStripLoaded}
               onSearch={(filter) => dbSearchRef.current?.runWithFilter(filter)}
+              dbHandle={dbHandle}
+              facades={dbFacades}
+              onApply={applyReelStops}
             />
           )}
 
@@ -560,7 +563,9 @@ export default function Home() {
               onApply={applyReelStops}
               onCreatePattern={createPatternFromMatch}
               onCreatePatterns={createPatternsFromMatch}
-              onSlot={(rs) => reelStripRef.current?.openWithReelStops(rs)}
+              onSlot={(rs, pid) =>
+                reelStripRef.current?.openWithReelStops(rs, pid)
+              }
               reelStripLoaded={reelStripLoaded}
             />
           )}
@@ -638,7 +643,9 @@ export default function Home() {
                 setDbHandle(h);
                 setDbFacades(f);
               }}
-              onSlot={(rs) => reelStripRef.current?.openWithReelStops(rs)}
+              onSlot={(rs, pid) =>
+                reelStripRef.current?.openWithReelStops(rs, pid)
+              }
               reelStripLoaded={reelStripLoaded}
               autoFindFacadeKey={autoFindReel?.facadeKey ?? null}
               autoFindFacadeId={autoFindReel?.facadeId ?? null}
