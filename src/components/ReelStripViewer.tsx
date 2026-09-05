@@ -11,7 +11,9 @@ import {
 import {
   parseReelStrips,
   parseReelStripsJson,
+  groupReelStripSets,
   type ReelStrip,
+  type ReelStripSet,
 } from "@/lib/parseReelStrips";
 import type { DbHandle, Facade, MatchedReelStop } from "@/lib/db";
 
@@ -83,10 +85,23 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
 
     const [open, setOpen] = useState(false);
     const [fileName, setFileName] = useState<string | null>(null);
-    const [reels, setReels] = useState<ReelStrip[] | null>(null);
+    // All reelStrip sets parsed from the uploaded file (one file can hold
+    // several sets of the same game), plus which one is active. `reels` below is
+    // derived from the active set — the rest of the component works off `reels`.
+    const [sets, setSets] = useState<ReelStripSet[] | null>(null);
+    const [setIdx, setSetIdx] = useState(0);
+    const reels = useMemo(
+      () => (sets ? sets[setIdx]?.reels ?? null : null),
+      [sets, setIdx]
+    );
     const [error, setError] = useState<string | null>(null);
     const [rows, setRows] = useState(3);
     const [offset, setOffset] = useState(0);
+    // Which position in the RNG stream the slot's reel stops start from. The
+    // slot shows SLOT_REELS consecutive values beginning here (default 0 = the
+    // start of the stream). Lets a candidate whose base-game stops are preceded
+    // by preamble values in the RNG land the correct 5 values on the grid.
+    const [slotStart, setSlotStart] = useState(0);
     // Index at the offset (landing) row, per reel.
     const [positions, setPositions] = useState<number[]>([]);
     // Raw RNG values (weighted strips), preserved so SEARCH matches the DB on
@@ -155,6 +170,19 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       [reels]
     );
 
+    // Landing strip index shown in each slot column. The RNG value feeding
+    // column i is rawValues[slotStart + i], so `slotStart` shifts which slice
+    // of the stream lands on the grid (default 0 = the first values). Falls
+    // back to the reel's own manual position when no RNG value covers it (fresh
+    // upload, or a start position past the end of the stream).
+    const slotLandings = useMemo(() => {
+      if (!reels) return [] as number[];
+      return reels.map((r, i) => {
+        const rng = rawValues[slotStart + i];
+        return rng != null ? rngToIndex(rng, r) : positions[i] ?? 0;
+      });
+    }, [reels, rawValues, slotStart, positions]);
+
     // Count scatter symbols visible in the slot area (rows × all reels). The
     // visible cell at row k of reel i is the strip index landing at `offset`
     // shifted up by k — the same window the scroll math (below) renders.
@@ -163,13 +191,13 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       let count = 0;
       reels.forEach((r, i) => {
         const L = r.symbols.length;
-        const landing = positions[i] ?? 0;
+        const landing = slotLandings[i] ?? 0;
         for (let k = 0; k < rows; k++) {
           if (isScatter(r.symbols[wrap(landing - offset + k, L)])) count++;
         }
       });
       return count;
-    }, [reels, positions, offset, rows]);
+    }, [reels, slotLandings, offset, rows]);
 
     const canFreeGame = freeGameArmed || scatterCount >= 3;
 
@@ -369,21 +397,28 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         const parsed = isJson
           ? parseReelStripsJson(text)
           : parseReelStrips(text);
-        const pos = parsed.map(() => 0);
-        setReels(parsed);
+        // A file may hold several reelStrip sets of the same game; load the
+        // first and let the user switch sets from the selector.
+        const grouped = groupReelStripSets(parsed);
+        const first = grouped[0].reels;
+        const pos = first.map(() => 0);
+        setSets(grouped);
+        setSetIdx(0);
         setPositions(pos);
-        setRawValues(parsed.map(() => undefined));
+        setRawValues(first.map(() => undefined));
+        setSlotStart(0);
         setFileName(file.name);
         setOpen(true);
         onLoadedChange(true);
         requestScroll(pos);
         // A new strip changes the symbol set — clear any symbol search state.
-        setSymSel(parsed.map(() => null));
+        setSymSel(first.map(() => null));
         setSymResults(null);
         setSymError(null);
         setSymProgress(null);
       } catch (e) {
-        setReels(null);
+        setSets(null);
+        setSetIdx(0);
         setPositions([]);
         setRawValues([]);
         onLoadedChange(false);
@@ -393,6 +428,22 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
             : "Failed to parse the reelStrip file (.xml / .json)."
         );
       }
+    }
+
+    // Switch the active reelStrip set: reset the grid landing and any symbol
+    // search state to match the newly selected set's reels.
+    function selectSet(idx: number) {
+      if (!sets || idx === setIdx || !sets[idx]) return;
+      const r = sets[idx].reels;
+      const pos = r.map(() => 0);
+      setSetIdx(idx);
+      setPositions(pos);
+      setRawValues(r.map(() => undefined));
+      requestScroll(pos);
+      setSymSel(r.map(() => null));
+      setSymResults(null);
+      setSymError(null);
+      setSymProgress(null);
     }
 
     // Land an RNG candidate on the slot grid. Shared by the imperative handle
@@ -414,11 +465,21 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       );
       setOpen(true);
       setPositions(pos);
+      // Keep the current RNG-start window — it persists across candidates and
+      // resets only when a new reelStrip file is loaded.
       // Preserve the raw RNG values so SEARCH can send them for HPP strips.
       setRawValues(reelStops.slice());
       // Only the first SLOT_REELS reels physically land on the slot grid; the
       // remaining values stay in `positions` (leave those reels untouched).
-      requestScroll(pos.map((v, i) => (i < SLOT_REELS ? v : undefined)));
+      // Honour the persisted RNG-start window: column i lands on the value at
+      // reelStops[slotStart + i], not the 1:1 position.
+      requestScroll(
+        reels.map((r, i) => {
+          if (i >= SLOT_REELS) return undefined;
+          const rng = reelStops[slotStart + i];
+          return rng != null ? rngToIndex(rng, r) : undefined;
+        })
+      );
       requestAnimationFrame(() =>
         panelRef.current?.scrollIntoView({
           behavior: "smooth",
@@ -469,6 +530,22 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       requestScroll(positions);
     }
 
+    // Move the slot's RNG window: land the SLOT_REELS values starting at the new
+    // position on the grid (clamped to the available stream).
+    function changeSlotStart(v: number) {
+      const max = Math.max(0, rawValues.length - 1);
+      setSlotStart(Math.max(0, Math.min(max, Math.floor(v || 0))));
+    }
+
+    // Re-land the grid whenever the RNG window moves.
+    useEffect(() => {
+      if (!reels) return;
+      requestScroll(
+        slotLandings.map((v, i) => (i < SLOT_REELS ? v : undefined))
+      );
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [slotStart]);
+
     // SEARCH sends every reel position to the DB amount search — not just the
     // first 5 that land on the slot grid. For HPP (weighted) strips the DB is
     // matched against raw RNG values, so send those instead of the stop index.
@@ -517,6 +594,28 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
 
             {error && <p className="error">{error}</p>}
 
+            {sets && sets.length > 1 && (
+              <div className="db-controls">
+                <label className="db-field db-field-grow">
+                  <span className="db-label">
+                    reelStrip set ({sets.length} in file)
+                  </span>
+                  <select
+                    className="select"
+                    value={setIdx}
+                    onChange={(e) => selectSet(Number(e.target.value))}
+                  >
+                    {sets.map((s, i) => (
+                      <option key={i} value={i}>
+                        {s.name ? s.name : `Set ${i + 1}`} — {s.reels.length}{" "}
+                        reels
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+
             {reels && (
               <>
                 <div className="db-controls">
@@ -551,6 +650,19 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                       ))}
                     </select>
                   </label>
+
+                  <label className="db-field">
+                    <span className="db-label">RNG start (slot)</span>
+                    <input
+                      className="select reelstrip-rows"
+                      type="number"
+                      min={0}
+                      max={Math.max(0, rawValues.length - 1)}
+                      value={slotStart}
+                      onChange={(e) => changeSlotStart(Number(e.target.value))}
+                      title="Which position in the RNG the slot's reel stops start from (default 0). The grid shows the values beginning at this position (e.g. 1 = start from the 2nd RNG value)."
+                    />
+                  </label>
                 </div>
 
                 <div className="reelstrip-scroll">
@@ -584,7 +696,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                           {[0, 1, 2].map((copy) =>
                             r.symbols.map((s, j) => {
                               const landed =
-                                copy === 1 && j === positions[i];
+                                copy === 1 && j === slotLandings[i];
                               return (
                                 <div
                                   key={copy * r.symbols.length + j}
