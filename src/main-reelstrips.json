@@ -1,0 +1,4254 @@
+{
+    "reelStripDefinitions": [
+        {
+            "name": "reel 1 nomummy",
+            "stops": [
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                }
+            ]
+        },
+        {
+            "name": "reel 2 nomummy",
+            "stops": [
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                }
+            ]
+        },
+        {
+            "name": "reel 3 nomummy",
+            "stops": [
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                }
+            ]
+        },
+        {
+            "name": "reel 4 nomummy",
+            "stops": [
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                }
+            ]
+        },
+        {
+            "name": "reel 5 nomummy",
+            "stops": [
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                }
+            ]
+        },
+        {
+            "name": "reel 1 mummy",
+            "stops": [
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Mummy"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Mummy"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                }
+            ]
+        },
+        {
+            "name": "reel 2 mummy",
+            "stops": [
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                }
+            ]
+        },
+        {
+            "name": "reel 3 mummy",
+            "stops": [
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                }
+            ]
+        },
+        {
+            "name": "reel 4 mummy",
+            "stops": [
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Ace"
+                }
+            ]
+        },
+        {
+            "name": "reel 5 mummy",
+            "stops": [
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Wild"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "King"
+                },
+                {
+                    "name": "Pic4"
+                },
+                {
+                    "name": "Pic5"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Pic1"
+                },
+                {
+                    "name": "Empty_Credit"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic2"
+                },
+                {
+                    "name": "Queen"
+                },
+                {
+                    "name": "Ace"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Pic3"
+                },
+                {
+                    "name": "Jack"
+                },
+                {
+                    "name": "Jack"
+                }
+            ]
+        }
+    ]
+}
