@@ -34,7 +34,7 @@ body {
 }
 
 .app {
-  max-width: 1500px;
+  max-width: 1800px;
   margin: 0 auto;
   padding: 24px 20px 80px;
 }
@@ -50,38 +50,174 @@ body {
   color: var(--muted);
 }
 
-.layout {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-  align-items: start;
-}
-
-@media (max-width: 1180px) {
-  .layout {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .col-result {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 860px) {
-  .layout {
-    grid-template-columns: 1fr;
-  }
-}
-
-.col-controls,
-.col-main,
-.col-result {
+/* Stacked collapsible sections ------------------------------------------ */
+.sections {
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
 
-.col-result {
-  align-self: start;
+/* A collapsible section shell (header bar + body). */
+.section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: var(--panel-2);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  text-align: left;
+  padding: 12px 16px;
+  cursor: pointer;
+}
+.section-head:hover {
+  background: #1b2540;
+}
+.section-caret {
+  color: var(--muted);
+  font-size: 10px;
+  width: 12px;
+  flex: 0 0 auto;
+}
+.section-title {
+  flex: 1 1 auto;
+}
+.section-aside {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12.5px;
+}
+/* Body padding. Add `max-height` + `overflow-y:auto` here to cap a section. */
+.section-body {
+  padding: 16px;
+}
+
+/* Section 1: a wrapping row of setup panels. */
+.section-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+/* Card grids inside sections. Each direct child is a self-contained .panel.
+   auto-fit + a real min width means columns wrap onto new rows instead of being
+   squeezed narrower than their content — so a fixed-width card (the bingo grid)
+   can never overflow its column and slide under a neighbour. The `min(100%, …)`
+   guard keeps a single column from forcing page-wide horizontal scroll on phones. */
+.section-grid {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+.section-grid > * {
+  min-width: 0;
+}
+/* A grid child that takes the whole row on its own (e.g. the gaffe result). */
+.grid-span-all {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+/* 380px comfortably fits the bingo card (~366px incl. panel padding). */
+.grid-5 {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+}
+
+/* Section 2's four columns in one row: select · card · payouts+outcomes ·
+   gaffe result. Explicit tracks (not auto-fit) keep them side by side, and each
+   min width guarantees the fixed bingo card never starves. Below ~1200px the
+   row can't hold four, so it falls back to wrapping. */
+.pattern-row {
+  grid-template-columns:
+    minmax(200px, 0.9fr)
+    minmax(380px, 1.1fr)
+    minmax(240px, 1fr)
+    minmax(300px, 1.3fr);
+}
+@media (max-width: 1200px) {
+  .pattern-row {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  }
+}
+/* Column that stacks its panels vertically (payouts above selected outcomes). */
+.stack-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+.grid-2 {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+}
+
+/* Section 4: the DB explorer (wide) beside the reelStrip viewer (narrow). */
+.db-section-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .db-section-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Inside the DB explorer: inputs column | results column. */
+.db-viewer-cols {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  margin-top: 12px;
+}
+@media (max-width: 820px) {
+  .db-viewer-cols {
+    grid-template-columns: 1fr;
+  }
+}
+.db-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+/* A divider between inputs and results on wide layouts. */
+.db-results {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 18px;
+  border-left: 1px solid var(--border);
+}
+@media (max-width: 820px) {
+  .db-results {
+    padding-left: 0;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+  }
+}
+/* The single amount field: yellow while it mirrors the tool's total, regular
+   once the user types a custom value. */
+.amount-field.auto {
+  color: var(--marked);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Panels ---------------------------------------------------------------- */
@@ -424,6 +560,10 @@ body {
 /* Bingo grid ------------------------------------------------------------ */
 .bingo {
   display: inline-block;
+  /* Safety net: if the column is ever narrower than the fixed-size card, scroll
+     it horizontally inside its panel rather than overflowing onto a neighbour. */
+  max-width: 100%;
+  overflow-x: auto;
 }
 .bingo-header {
   display: grid;

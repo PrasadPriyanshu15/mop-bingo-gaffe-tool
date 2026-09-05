@@ -11,16 +11,17 @@ import SelectionSummary, {
 } from "@/components/SelectionSummary";                                       
 import GaffeResult from "@/components/GaffeResult";
 import Notepad from "@/components/Notepad";
-import ReelStopFinder, { type Win } from "@/components/ReelStopFinder";
-import DbAmountSearch, {                     
-  type DbAmountSearchHandle,                                         
-} from "@/components/DbAmountSearch";                                                   
+import DbViewer, {
+  type Win,
+  type DbViewerHandle,
+} from "@/components/DbViewer";
 import ReelStripViewer, {
   type ReelStripHandle,                                     
 } from "@/components/ReelStripViewer";
 import ResultJson from "@/components/ResultJson";
 import PaytableIssues from "@/components/PaytableIssues";
 import WebsocketCompare from "@/components/WebsocketCompare";
+import CollapsibleSection from "@/components/CollapsibleSection";
 import { validatePaytable } from "@/lib/validatePaytable";
 import type { DbHandle, Facade } from "@/lib/db";
 import {
@@ -65,7 +66,7 @@ export default function Home() {
   // Coordination for the reelStrip viewer <-> result rows <-> DB amount search.
   const [reelStripLoaded, setReelStripLoaded] = useState(false);
   const reelStripRef = useRef<ReelStripHandle>(null);
-  const dbSearchRef = useRef<DbAmountSearchHandle>(null);
+  const dbSearchRef = useRef<DbViewerHandle>(null);
   // Bumped when a "create pattern" click in the DB amount search should drive the
   // reelStops finder: it carries the bet line to select and the filters to mirror
   // there, plus a token whose change triggers an automatic "Find reelStops" (after
@@ -516,186 +517,208 @@ export default function Home() {
         </p>
       </header>
 
-      <div className="layout">
-        <section className="col-controls">
-          <XmlUpload onLoaded={handleLoaded} loadedName={loadedName} />
+      <div className="sections">
+        {/* ── Section 1 · Setup & Validation ─────────────────────────── */}
+        <CollapsibleSection title="1 · Setup & Validation">
+          <div className="section-row">
+            <XmlUpload onLoaded={handleLoaded} loadedName={loadedName} />
 
-          {ready && issues && <PaytableIssues issues={issues} />}
+            {ready && (
+              <BetLevelSelect
+                paytables={data.paytables}
+                selectedKey={betKey}
+                onSelect={handleBetLevel}
+              />
+            )}
 
-          {ready && data && <WebsocketCompare data={data} />}
+            {ready && issues && <PaytableIssues issues={issues} />}
 
-          {ready && (
-            <BetLevelSelect
-              paytables={data.paytables}
-              selectedKey={betKey}
-              onSelect={handleBetLevel}
-            />
-          )}
+            {ready && data && <WebsocketCompare data={data} />}
+          </div>
+        </CollapsibleSection>
 
-          {canPick && (
-            <PatternSelect
-              patterns={betLinePatterns}
-              selectedIds={selectedIds}
-              onSelect={selectOnlyPattern}
-              onToggle={togglePattern}
-            />
-          )}
+        {/* ── Section 2 · Bingo Pattern ──────────────────────────────── */}
+        <CollapsibleSection title="2 · Bingo Pattern">
+          <div className="section-grid pattern-row">
+            {/* Select pattern */}
+            {canPick && (
+              <PatternSelect
+                patterns={betLinePatterns}
+                selectedIds={selectedIds}
+                onSelect={selectOnlyPattern}
+                onToggle={togglePattern}
+              />
+            )}
 
-          {dbHandle && (
-            <ReelStripViewer
-              ref={reelStripRef}
-              onLoadedChange={setReelStripLoaded}
-              onSearch={(filter) => dbSearchRef.current?.runWithFilter(filter)}
-              dbHandle={dbHandle}
-              facades={dbFacades}
-              onApply={applyReelStops}
-            />
-          )}
+            {/* Bingo card */}
+            {ready ? (
+              <BingoGrid
+                bingoCard={bingoCard}
+                highlights={bingoHighlights}
+                onChange={setBingoCard}
+              />
+            ) : (
+              <div className="panel empty">
+                <p className="muted">Upload a VGTPaytable XML file to begin.</p>
+              </div>
+            )}
 
-          {dbHandle && (
-            <DbAmountSearch
-              ref={dbSearchRef}
-              handle={dbHandle}
-              facades={dbFacades}
-              data={data}
-              betKey={betKey}
-              bingoCard={bingoCard}
-              onApply={applyReelStops}
-              onCreatePattern={createPatternFromMatch}
-              onCreatePatterns={createPatternsFromMatch}
-              onSlot={(rs, pid) =>
-                reelStripRef.current?.openWithReelStops(rs, pid)
-              }
-              reelStripLoaded={reelStripLoaded}
-            />
-          )}
-        </section>
+            {/* Column 3: Payouts & contained patterns (top) + Selected outcomes. */}
+            {canPick && (
+              <div className="stack-col">
+                {/* Payouts & contained patterns */}
+                {(selectedPatterns.length > 0 || thresholds.size > 0) && (
+                  <div className="panel">
+                    <div className="panel-title">
+                      Payouts &amp; contained patterns
+                    </div>
 
-        <section className="col-main" role="main">
-          {ready ? (
-            <BingoGrid
-              bingoCard={bingoCard}
-              highlights={bingoHighlights}
-              onChange={setBingoCard}
-            />
+                    {/* Every forced/browsed pattern, colored + labeled Pattern N. */}
+                    {highlightPatterns.map((p, i) => (
+                      <InstanceList
+                        key={p.id}
+                        pattern={p}
+                        entries={entriesFor(p.id)}
+                        threshold={thresholds.get(p.id) ?? null}
+                        onToggle={(q) => toggleRow(p.id, q)}
+                        badge={`Pattern ${i + 1}`}
+                        color={highlightColor(i)}
+                      />
+                    ))}
+
+                    {/* Patterns contained in the browsed one not already shown. */}
+                    {contained
+                      .filter((p) => !highlightPatterns.some((h) => h.id === p.id))
+                      .slice()
+                      .sort((a, b) => a.cells.length - b.cells.length)
+                      .map((p) => (
+                        <InstanceList
+                          key={p.id}
+                          pattern={p}
+                          entries={entriesFor(p.id)}
+                          threshold={thresholds.get(p.id) ?? null}
+                          onToggle={(q) => toggleRow(p.id, q)}
+                          badge="Contained"
+                        />
+                      ))}
+
+                    {selectedPatterns.length > 0 &&
+                      contained.filter(
+                        (p) => !highlightPatterns.some((h) => h.id === p.id)
+                      ).length === 0 && (
+                        <p className="muted small">
+                          No other patterns are fully contained inside{" "}
+                          {selectedPatterns.length === 1
+                            ? selectedPatterns[0].name
+                            : "the selected patterns"}
+                          .
+                        </p>
+                      )}
+                  </div>
+                )}
+
+                {/* Selected outcomes */}
+                <SelectionSummary
+                  rows={effectiveRows}
+                  selectedSubtotal={selectedSubtotal}
+                  inGameTotal={inGame.total}
+                  extras={inGame.extras}
+                  cascades={cascades}
+                  onRemove={clearPattern}
+                  onClear={() => setThresholds(new Map())}
+                />
+              </div>
+            )}
+
+            {/* Column 4: Generated gaffe result */}
+            {canPick && (
+              <GaffeResult
+                reelStops={reelStops}
+                onRemoveReelStops={() => setReelStops([])}
+                bingoCard={bingoCard}
+                built={displayBuilt}
+                forcedNames={forcedNames}
+                daubColors={daubColors}
+                overridden={ballCallsOverride != null}
+                defaultCalls={builtBallCalls.calls}
+                makeRandomCalls={() => {
+                  const calls = buildBallCalls(ballCallBase, daubs, true).calls;
+                  if (!data || thresholds.size === 0) return calls;
+                  return refineCompletionTiers(
+                    calls,
+                    bingoCard,
+                    data.patterns,
+                    entriesByPattern,
+                    thresholds
+                  );
+                }}
+                onOverrideBallCalls={setBallCallsOverride}
+              />
+            )}
+          </div>
+        </CollapsibleSection>
+
+        {/* ── Section 3 · Result & Notepad (half / half) ─────────────── */}
+        <div className="section-grid grid-2">
+          {canPick ? (
+            <ResultJson json={gaffeJson} />
           ) : (
             <div className="panel empty">
-              <p className="muted">Upload a VGTPaytable XML file to begin.</p>
+              <p className="muted">
+                The generated gaffe JSON appears once a bet level is picked.
+              </p>
             </div>
           )}
+          <Notepad />
+        </div>
 
-          {canPick && (selectedPatterns.length > 0 || thresholds.size > 0) && (
-            <div className="panel">
-              <div className="panel-title">
-                4 · Payouts &amp; contained patterns
-              </div>
+        {/* ── Section 4 · DB & ReelStrip Viewer ──────────────────────── */}
+        {/* keepMounted: the DB viewer / reelStrip viewer own their loaded
+            database and search results in local state — hide on collapse rather
+            than unmount so that state survives until the tab is closed. */}
+        <CollapsibleSection title="4 · DB & ReelStrip Viewer" keepMounted>
+          <div className="db-section-cols">
+            {/* All DB inputs + results (upload, bet line, amount, filters). */}
+            {canPick && (
+              <DbViewer
+                ref={dbSearchRef}
+                data={data}
+                betKey={betKey}
+                bingoCard={bingoCard}
+                totalPayout={totalPayout}
+                wins={wins}
+                onDbReady={(h, f) => {
+                  setDbHandle(h);
+                  setDbFacades(f);
+                }}
+                onApply={applyReelStops}
+                onCreatePattern={createPatternFromMatch}
+                onCreatePatterns={createPatternsFromMatch}
+                onSlot={(rs, pid) =>
+                  reelStripRef.current?.openWithReelStops(rs, pid)
+                }
+                reelStripLoaded={reelStripLoaded}
+                autoFindFacadeKey={autoFindReel?.facadeKey ?? null}
+                autoFindFacadeId={autoFindReel?.facadeId ?? null}
+                autoFindPattern={autoFindReel?.pattern ?? ""}
+                autoFindMaxRng={autoFindReel?.maxRng ?? ""}
+                autoFindToken={autoFindReel?.token ?? 0}
+              />
+            )}
 
-              {/* Every forced/browsed pattern, colored + labeled Pattern N. */}
-              {highlightPatterns.map((p, i) => (
-                <InstanceList
-                  key={p.id}
-                  pattern={p}
-                  entries={entriesFor(p.id)}
-                  threshold={thresholds.get(p.id) ?? null}
-                  onToggle={(q) => toggleRow(p.id, q)}
-                  badge={`Pattern ${i + 1}`}
-                  color={highlightColor(i)}
-                />
-              ))}
-
-              {/* Patterns contained in the browsed one that aren't already shown. */}
-              {contained
-                .filter((p) => !highlightPatterns.some((h) => h.id === p.id))
-                .slice()
-                .sort((a, b) => a.cells.length - b.cells.length)
-                .map((p) => (
-                  <InstanceList
-                    key={p.id}
-                    pattern={p}
-                    entries={entriesFor(p.id)}
-                    threshold={thresholds.get(p.id) ?? null}
-                    onToggle={(q) => toggleRow(p.id, q)}
-                    badge="Contained"
-                  />
-                ))}
-
-              {selectedPatterns.length > 0 &&
-                contained.filter(
-                  (p) => !highlightPatterns.some((h) => h.id === p.id)
-                ).length === 0 && (
-                  <p className="muted small">
-                    No other patterns are fully contained inside{" "}
-                    {selectedPatterns.length === 1
-                      ? selectedPatterns[0].name
-                      : "the selected patterns"}
-                    .
-                  </p>
-                )}
-            </div>
-          )}
-
-          {canPick && (
-            <ReelStopFinder
-              totalPayout={totalPayout}
-              wins={wins}
-              onApply={applyReelStops}
-              onDbReady={(h, f) => {
-                setDbHandle(h);
-                setDbFacades(f);
-              }}
-              onSlot={(rs, pid) =>
-                reelStripRef.current?.openWithReelStops(rs, pid)
-              }
-              reelStripLoaded={reelStripLoaded}
-              autoFindFacadeKey={autoFindReel?.facadeKey ?? null}
-              autoFindFacadeId={autoFindReel?.facadeId ?? null}
-              autoFindPattern={autoFindReel?.pattern ?? ""}
-              autoFindMaxRng={autoFindReel?.maxRng ?? ""}
-              autoFindToken={autoFindReel?.token ?? 0}
-            />
-          )}
-        </section>
-
-        {canPick && (
-          <section className="col-result">
-            <ResultJson json={gaffeJson} />
-
-            <SelectionSummary
-              rows={effectiveRows}
-              selectedSubtotal={selectedSubtotal}
-              inGameTotal={inGame.total}
-              extras={inGame.extras}
-              cascades={cascades}
-              onRemove={clearPattern}
-              onClear={() => setThresholds(new Map())}
-            />
-
-            <GaffeResult
-              reelStops={reelStops}
-              onRemoveReelStops={() => setReelStops([])}
-              bingoCard={bingoCard}
-              built={displayBuilt}
-              forcedNames={forcedNames}
-              daubColors={daubColors}
-              overridden={ballCallsOverride != null}
-              defaultCalls={builtBallCalls.calls}
-              makeRandomCalls={() => {
-                const calls = buildBallCalls(ballCallBase, daubs, true).calls;
-                if (!data || thresholds.size === 0) return calls;
-                return refineCompletionTiers(
-                  calls,
-                  bingoCard,
-                  data.patterns,
-                  entriesByPattern,
-                  thresholds
-                );
-              }}
-              onOverrideBallCalls={setBallCallsOverride}
-            />
-
-            <Notepad />
-          </section>
-        )}
+            {/* reelStrip viewer slot grid */}
+            {dbHandle && (
+              <ReelStripViewer
+                ref={reelStripRef}
+                onLoadedChange={setReelStripLoaded}
+                onSearch={(filter) => dbSearchRef.current?.runWithFilter(filter)}
+                dbHandle={dbHandle}
+                facades={dbFacades}
+                onApply={applyReelStops}
+              />
+            )}
+          </div>
+        </CollapsibleSection>
       </div>
     </main>
   );

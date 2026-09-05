@@ -2,11 +2,12 @@
 
 import {
   forwardRef,
+  useEffect,
   useImperativeHandle,
   useRef,
   useState,
 } from "react";
-import type { DbHandle, Facade, RngLenFilter } from "@/lib/db";
+import type { DbHandle, DbType, Facade, RngLenFilter } from "@/lib/db";
 import type { MatchingPattern, Pattern, Paytable, Paytable59 } from "@/lib/types";
 import { parsePattern, patternIsActive } from "@/lib/reelstop";
 import { patternContains, cardBallCallBase } from "@/lib/patterns";
@@ -81,62 +82,16 @@ function extrasTitle(extras: PatternWin[]): string {
   );
 }
 
-export interface DbAmountSearchHandle {
-  /** Open the panel, set the reelStop filter, and run the search. */
-  runWithFilter: (filter: string) => void;
-  /** Current filter values + the selected DB bet line, so a "create pattern"
-   *  click can mirror them into the reelStops finder (section 5). `facadeSel` is
-   *  a DB facadeId as a string, or "all". */
-  getFilters: () => { pattern: string; maxRng: string; facadeSel: string };
-}
-
-interface Props {
-  handle: DbHandle;
-  facades: Facade[];
-  /** Parsed paytable XML — used to find which patterns pay a given amount. */
-  data: Paytable59 | null;
-  /** The bet line chosen in section 2 (Select bet level) — the XML paytable that
-   *  "map DB amount → Patterns" matches against. */
-  betKey: string | null;
-  /** Current bingo card — used to compute each match's true in-game payout. */
-  bingoCard: number[][];
-  /** Push a chosen reelStop candidate into the main generated gaffe output. */
-  onApply: (reelStops: number[]) => void;
-  /** Prefill section 4 by selecting this pattern/ballQty at this bet line. */
-  onCreatePattern: (
-    facadeKey: string,
-    patternId: number,
-    ballQty: number
-  ) => void;
-  /** Prefill section 4 with a whole combination: several patterns/ballQtys at
-   *  one bet line whose payouts sum to a searched amount. */
-  onCreatePatterns: (
-    facadeKey: string,
-    selections: { patternId: number; ballQty: number }[]
-  ) => void;
-  /** Load a reelStop into the reelStrip viewer. `presentationId` (HPP / Type 2)
-   *  lets FREE GAME auto-load that presentation's segment-2+ RNG. */
-  onSlot: (reelStops: number[], presentationId?: number) => void;
-  /** Whether a reelStrip .xml is loaded (enables the "slot" button). */
-  reelStripLoaded: boolean;
-}
-
 /** A pattern threshold whose cumulative total equals the searched amount. */
 interface PatternMatch {
   facadeKey: string;
   patternId: number;
   patternName: string;
-  /** The ball call (threshold) that starts the cascade. */
   ballQty: number;
-  /** This threshold row's own payout. */
   payout: number;
-  /** Cumulative total = this row + all higher-ballQty (auto) rows (== amount). */
   total: number;
-  /** How many higher-ballQty rows are auto-included on top of this one. */
   autoCount: number;
-  /** True AllPatternsPaid payout on the current card (>= total when extras win). */
   inGameTotal: number;
-  /** Extra patterns completed by this selection's daubs (also paid in-game). */
   extras: PatternWin[];
 }
 
@@ -144,28 +99,19 @@ interface PatternMatch {
 interface ComboMember {
   patternId: number;
   patternName: string;
-  /** The ball call (threshold) that starts this pattern's cascade. */
   ballQty: number;
-  /** This threshold row's own payout. */
   payout: number;
-  /** Cumulative total this pattern contributes (row + higher-ballQty auto rows). */
   total: number;
-  /** How many higher-ballQty rows are auto-included on top of this one. */
   autoCount: number;
 }
 
 /** A set of distinct patterns (same bet line) whose totals sum to the amount. */
 interface PatternCombo {
   facadeKey: string;
-  /** Length 2..3, sorted by patternId. */
   members: ComboMember[];
-  /** Sum of member totals (== the searched amount). */
   total: number;
-  /** True when a member is geometrically contained in another (pattern + sub). */
   hasSubPattern: boolean;
-  /** True AllPatternsPaid payout on the current card (>= total when extras win). */
   inGameTotal: number;
-  /** Extra patterns completed by the combined daubs (also paid in-game). */
   extras: PatternWin[];
 }
 
@@ -206,8 +152,15 @@ interface MappedGroup {
   amount: number;
   singles: PatternMatch[];
   combos: PatternCombo[];
-  /** True when the combo search for this amount hit the MAX_COMBOS cap. */
   capped: boolean;
+}
+
+/** One searched amount with its matching awards (Each-win mode). */
+interface WinSection {
+  key: string;
+  label: string;
+  amount: number;
+  awards: AwardResult[];
 }
 
 type View =
@@ -243,8 +196,7 @@ function comboTab(c: PatternCombo): Exclude<PatternTab, "single"> {
  * Given the bet-line paytable(s) to consider, find the single-pattern thresholds
  * and the 2..3 pattern combinations whose totals land in [lo, hi]. Pure math,
  * shared by "see patterns" and "map DB amount → Patterns". Combinations are
- * skipped for HighestPriorityPaid games (only one pattern ever pays), and the
- * combo search is capped at MAX_COMBOS.
+ * skipped for HighestPriorityPaid games, and the combo search is capped.
  */
 function computePatternMatches(
   tables: Paytable[],
@@ -253,21 +205,14 @@ function computePatternMatches(
   lo: number,
   hi: number
 ): { matches: PatternMatch[]; combos: PatternCombo[]; capped: boolean } {
-  // Pattern lookup shared by the single-match and combination in-game scoring.
   const patternByIdAll = new Map<number, Pattern>(
     data.patterns.map((p) => [p.id, p])
   );
 
-  // HighestPriorityPaid games pay only the single highest-priority satisfied
-  // pattern — never a combination, and no "also won" union completion. Skip the
-  // combination search (which is also what would otherwise churn through the
-  // hundreds of unique patterns these games define and stall the panel), and
-  // don't compute an inflated in-game total per match.
   const highestPriority = data.evaluationType === "HighestPriorityPaid";
 
   const matches: PatternMatch[] = [];
   for (const pt of tables) {
-    // Group this bet level's rows by pattern.
     const byPattern = new Map<number, MatchingPattern[]>();
     for (const e of pt.entries) {
       const arr = byPattern.get(e.patternId);
@@ -275,10 +220,6 @@ function computePatternMatches(
       else byPattern.set(e.patternId, [e]);
     }
     for (const [pid, arr] of byPattern) {
-      // Selecting ballQty T selects every row with ballQty >= T, so the total
-      // for threshold at index i is the suffix sum from i (matches the tool's
-      // effectiveRows / totalPayout). Keep the thresholds whose total lands in
-      // [lo, hi].
       arr.sort((a, b) => a.ballQty - b.ballQty);
       let suffix = 0;
       const suffixSums = new Array<number>(arr.length);
@@ -313,12 +254,8 @@ function computePatternMatches(
       }
     }
   }
-  // Total ascending (then ball call) so a range reads low → high.
   matches.sort((a, b) => a.total - b.total || a.ballQty - b.ballQty);
 
-  // Combinations of 2..3 distinct patterns at ONE bet line whose totals land in
-  // [lo, hi] (a single amount is just lo === hi). Shown alongside the single-
-  // pattern matches and split by size / sub-pattern relationship in the tabs.
   const patternById = patternByIdAll;
   const found: PatternCombo[] = [];
   const seen = new Set<string>();
@@ -326,8 +263,6 @@ function computePatternMatches(
 
   if (!highestPriority)
   outer: for (const pt of tables) {
-    // Per pattern, the candidate thresholds whose total is still <= hi
-    // (a pattern contributes its suffix-sum total, same as the single search).
     const byPattern = new Map<number, MatchingPattern[]>();
     for (const e of pt.entries) {
       const arr = byPattern.get(e.patternId);
@@ -360,11 +295,6 @@ function computePatternMatches(
       if (cands.length > 0) patternCands.push(cands);
     }
 
-    // DFS: pick at most one candidate per pattern (patterns kept in order so a
-    // set is never revisited as a permutation), up to MAX_COMBO_PATTERNS.
-    // Record whenever the running total lands in [lo, hi] with >= 2 members;
-    // keep exploring (a valid pair can still extend into a valid triple). Prune
-    // once a total would exceed hi. Returns false only to abort at MAX_COMBOS.
     const chosen: ComboMember[] = [];
     const record = (sum: number): boolean => {
       const members = [...chosen].sort((a, b) => a.patternId - b.patternId);
@@ -374,8 +304,6 @@ function computePatternMatches(
         members.map((m) => `${m.patternId}:${m.ballQty}`).join("|");
       if (seen.has(key)) return true;
       seen.add(key);
-      // A containment relationship among any member pair marks this as a
-      // "pattern + sub-pattern" combination.
       let hasSubPattern = false;
       for (let a = 0; a < members.length && !hasSubPattern; a++) {
         for (let b = 0; b < members.length; b++) {
@@ -428,7 +356,6 @@ function computePatternMatches(
     if (!dfs(0, 0)) break outer;
   }
 
-  // Total ascending, then fewer members, then leading pattern name.
   found.sort(
     (a, b) =>
       a.total - b.total ||
@@ -450,8 +377,7 @@ function renderSingle(
     <div key={key} className="pattern-match">
       <div className="pattern-match-info">
         <span className="pattern-match-name">
-          {m.patternName}{" "}
-          <span className="pattern-id">#{m.patternId}</span>
+          {m.patternName} <span className="pattern-id">#{m.patternId}</span>
           <span className="pattern-match-amount">
             {m.total.toLocaleString()}
           </span>
@@ -465,8 +391,7 @@ function renderSingle(
         </span>
         {m.extras.length > 0 && (
           <span className="ingame-flag" title={extrasTitle(m.extras)}>
-            in-game {m.inGameTotal.toLocaleString()} · +
-            {m.extras.length} also won
+            in-game {m.inGameTotal.toLocaleString()} · +{m.extras.length} also won
           </span>
         )}
       </div>
@@ -474,7 +399,7 @@ function renderSingle(
         type="button"
         className="btn btn-small"
         onClick={() => onCreatePattern(m.facadeKey, m.patternId, m.ballQty)}
-        title="Select this pattern in section 4 (fills payout, ballCalls & result)"
+        title="Select this pattern in section 2 (fills payout, ballCalls & result)"
       >
         create pattern
       </button>
@@ -506,8 +431,8 @@ function renderCombo(
           </span>
           {c.extras.length > 0 && (
             <span className="ingame-flag" title={extrasTitle(c.extras)}>
-              in-game {c.inGameTotal.toLocaleString()} · +
-              {c.extras.length} also won
+              in-game {c.inGameTotal.toLocaleString()} · +{c.extras.length} also
+              won
             </span>
           )}
         </span>
@@ -523,7 +448,7 @@ function renderCombo(
               }))
             )
           }
-          title="Select all these patterns in section 4 (fills payout, ballCalls & result)"
+          title="Select all these patterns in section 2 (fills payout, ballCalls & result)"
         >
           create combination
         </button>
@@ -533,8 +458,7 @@ function renderCombo(
           <div key={j} className="pattern-match">
             <div className="pattern-match-info">
               <span className="pattern-match-name">
-                {m.patternName}{" "}
-                <span className="pattern-id">#{m.patternId}</span>
+                {m.patternName} <span className="pattern-id">#{m.patternId}</span>
                 <span className="pattern-match-amount">
                   {m.total.toLocaleString()}
                 </span>
@@ -555,9 +479,9 @@ function renderCombo(
 
 /**
  * Tabbed single/combination pattern results (Single · Double · Triple · Double +
- * sub · Triple + sub). Owns its own active-tab state, so each instance (the
- * "see patterns" block and every mapped amount) tabs independently. `ranged`
- * tweaks the header wording; `amtLabel` is the amount/range being described.
+ * sub · Triple + sub). Owns its own active-tab state, so each instance tabs
+ * independently. `ranged` tweaks the header wording; `amtLabel` is the
+ * amount/range being described.
  */
 function PatternResults({
   singles,
@@ -670,40 +594,122 @@ function PatternResults({
   );
 }
 
+/** The individual selected wins (one per ticked payout row). */
+export interface Win {
+  key: string;
+  label: string;
+  payout: number;
+}
+
+export interface DbViewerHandle {
+  /** Set the reelStop filter and run a search (driven by the reelStrip viewer). */
+  runWithFilter: (filter: string) => void;
+  /** Current filter values + selected DB bet line, so a "create pattern" click
+   *  can mirror them back into an auto-find. `facadeSel` is a DB facadeId as a
+   *  string, or "all". */
+  getFilters: () => { pattern: string; maxRng: string; facadeSel: string };
+}
+
+interface Props {
+  /** Parsed paytable XML — used to find which patterns pay a given amount. */
+  data: Paytable59 | null;
+  /** The bet line chosen in section 1 — the XML paytable "map DB amount →
+   *  Patterns" matches against. */
+  betKey: string | null;
+  /** Current bingo card — used to compute each match's true in-game payout. */
+  bingoCard: number[][];
+  /** The tool's current total payout — the amount field's default (yellow). */
+  totalPayout: number;
+  /** The individual selected wins (enables the Total / Each-win toggle). */
+  wins: Win[];
+  /** Report the opened DB handle upward so other panels can query it. */
+  onDbReady: (handle: DbHandle | null, facades: Facade[]) => void;
+  /** Push a chosen reelStop candidate into the main generated gaffe output. */
+  onApply: (reelStops: number[]) => void;
+  /** Prefill section 2 by selecting this pattern/ballQty at this bet line. */
+  onCreatePattern: (
+    facadeKey: string,
+    patternId: number,
+    ballQty: number
+  ) => void;
+  /** Prefill section 2 with a whole combination. */
+  onCreatePatterns: (
+    facadeKey: string,
+    selections: { patternId: number; ballQty: number }[]
+  ) => void;
+  /** Load a reelStop into the reelStrip viewer. */
+  onSlot: (reelStops: number[], presentationId?: number) => void;
+  /** Whether a reelStrip .xml is loaded (enables the "slot" button). */
+  reelStripLoaded: boolean;
+  /** Bet line (facadeKey) a "create pattern" click wants pre-selected here. */
+  autoFindFacadeKey?: string | null;
+  /** DB facadeId selected in the search — preferred over facadeKey. */
+  autoFindFacadeId?: number | null;
+  /** reelStop positional filter to mirror on auto-find. */
+  autoFindPattern?: string;
+  /** RNG-length bound (HPP) to mirror on auto-find. */
+  autoFindMaxRng?: string;
+  /** Changes each time an auto-find is requested; triggers the lookup. */
+  autoFindToken?: number;
+}
+
 /**
- * Free-form DB lookup, independent of the tool's computed payout:
- *  • single amount (e.g. 500) — award cards, with optional positional filter;
- *  • range (e.g. 500-1000) — the amounts that exist in that range;
- *  • range + filter — only the in-range amounts that have a matching reelStop,
- *    each with its matches;
- *  • filter only (no amount) — every amount in the DB with a matching reelStop.
- * Collapsible; only shown once a .db is loaded.
+ * Unified DB explorer: owns the outcomes .db upload (APP / HPP schema) and a
+ * single set of inputs — bet line, one editable Amount field (defaulting to the
+ * tool's total payout, shown yellow until you type a custom value), reelStop
+ * filter and RNG bound — with every search action (Search DB, see patterns, map
+ * DB amount → Patterns, Min–Max, and the Total / Each-win reelStop lookup). All
+ * results render in the right-hand column. The DB layer (wa-sqlite) is imported
+ * lazily so it stays out of the initial bundle and only runs in the browser.
  */
-const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
-  function DbAmountSearch(
-    {
-      handle,
-      facades,
-      data,
-      betKey,
-      bingoCard,
-      onApply,
-      onCreatePattern,
-      onCreatePatterns,
-      onSlot,
-      reelStripLoaded,
-    },
-    ref
-  ) {
+const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
+  {
+    data,
+    betKey,
+    bingoCard,
+    totalPayout,
+    wins,
+    onDbReady,
+    onApply,
+    onCreatePattern,
+    onCreatePatterns,
+    onSlot,
+    reelStripLoaded,
+    autoFindFacadeKey,
+    autoFindFacadeId,
+    autoFindPattern,
+    autoFindMaxRng,
+    autoFindToken,
+  },
+  ref
+) {
+  // ── DB upload / schema ─────────────────────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleRef = useRef<DbHandle | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "opening" | "ready">("idle");
+  // Schema for the NEXT file chosen; openedType is the current DB's real schema.
+  const [dbType, setDbType] = useState<DbType>("type1");
+  const [openedType, setOpenedType] = useState<DbType | null>(null);
+  const [facades, setFacades] = useState<Facade[]>([]);
+  // FacadeIds that have an award for the current single amount — flagged (✓).
+  const [facadesWithResults, setFacadesWithResults] = useState<Set<number>>(
+    new Set()
+  );
+
+  // ── Search inputs ──────────────────────────────────────────────────────
   const panelRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
   const [facadeSel, setFacadeSel] = useState<string>("all");
   const [amount, setAmount] = useState("");
+  // Whether the amount was hand-typed. While false, it mirrors totalPayout and
+  // shows in yellow; once true it holds a custom value in regular text.
+  const [custom, setCustom] = useState(false);
   const [pattern, setPattern] = useState("");
-  // HPP (Type 2) only: bound the reconstructed RNG length. Blank = no bound;
-  // a single "300" keeps candidates with ≤ 300 RNG values, a range "100-300"
-  // keeps 100..300. Applies to both "Search DB" and "map DB amount → Patterns".
   const [maxRng, setMaxRng] = useState("");
+  // "total" searches the amount field; "each" searches every selected win.
+  const [mode, setMode] = useState<"total" | "each">("total");
+
+  // ── Results / progress ─────────────────────────────────────────────────
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View | null>(null);
@@ -711,28 +717,91 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     null
   );
   const [openAmounts, setOpenAmounts] = useState<Set<number>>(new Set());
-  // Patterns whose total lands on the entered amount, or inside the entered
-  // range (from "see patterns"). lo === hi means a single amount was entered.
   const [patternMatches, setPatternMatches] = useState<
     { lo: number; hi: number; matches: PatternMatch[] } | null
   >(null);
-  // Pattern combinations (2..3 distinct patterns at one bet line) whose totals
-  // land in the entered amount/range. Computed for both single amounts and ranges.
   const [combos, setCombos] = useState<
     { lo: number; hi: number; combos: PatternCombo[]; capped: boolean } | null
   >(null);
+  // Each-win reelStop sections + which are expanded.
+  const [sections, setSections] = useState<WinSection[] | null>(null);
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
 
-  // Increments on every new search / cancel; a running loop bails out as soon
-  // as it sees its id is stale, so long scans can be interrupted.
   const runIdRef = useRef(0);
 
+  const ready = status === "ready";
   const showFacade = facadeSel === "all";
-  // The RNG-count cap only applies to HPP (Type 2) databases.
-  const isType2 = handle.type === "type2";
+  const isType2 = openedType === "type2";
+  const multiWin = wins.length > 1;
+  const eachMode = mode === "each" && multiWin;
 
-  /** Resolve the "RNG count" field into a length bound. Blank / non-Type-2 → no
-   *  bound. A single "300" → ≤ 300; a range "100-300" → 100..300 (inclusive).
-   *  Values must be positive integers, otherwise `error` is set so callers bail. */
+  // The amount field tracks the tool's total until the user types a custom value.
+  useEffect(() => {
+    if (!custom) setAmount(totalPayout ? String(totalPayout) : "");
+  }, [totalPayout, custom]);
+
+  // Flag which facades have an award for the current single amount, so the picker
+  // can mark them (✓). Cheap indexed query; re-runs when the amount changes.
+  useEffect(() => {
+    if (!ready || !handleRef.current) return;
+    const amt = parseAmountInput(amount);
+    if (amt.kind !== "single") {
+      setFacadesWithResults(new Set());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const db = await import("@/lib/db");
+        const ids = await db.findFacadesWithAmount(handleRef.current!, amt.v);
+        if (!cancelled) setFacadesWithResults(new Set(ids));
+      } catch {
+        if (!cancelled) setFacadesWithResults(new Set());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, amount]);
+
+  async function handleFile(file: File) {
+    setError(null);
+    setView(null);
+    setSections(null);
+    setPatternMatches(null);
+    setCombos(null);
+    setStatus("opening");
+    setFileName(
+      `${file.name} (${(file.size / 1024 / 1024).toFixed(0)} MB · ${
+        dbType === "type2" ? "Type 2" : "Type 1"
+      })`
+    );
+    try {
+      const db = await import("@/lib/db");
+      if (handleRef.current) await db.closeDatabase(handleRef.current);
+      const h = await db.openDatabase(file, dbType);
+      handleRef.current = h;
+      setOpenedType(h.type);
+      if (h.type !== dbType) {
+        setFileName(
+          `${file.name} (${(file.size / 1024 / 1024).toFixed(0)} MB · ${
+            h.type === "type2" ? "Type 2" : "Type 1"
+          }, no Segment table)`
+        );
+      }
+      const list = await db.listFacades(h);
+      setFacades(list);
+      setFacadeSel("all");
+      setStatus("ready");
+      onDbReady(h, list);
+    } catch (e) {
+      setStatus("idle");
+      setError(e instanceof Error ? e.message : "Failed to open the database.");
+      onDbReady(null, []);
+    }
+  }
+
+  /** Resolve the "RNG count" field into a length bound (Type 2 only). */
   function parseMaxRng(): { filter: RngLenFilter | null; error: boolean } {
     if (!isType2) return { filter: null, error: false };
     const t = maxRng.trim();
@@ -750,12 +819,27 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     return { filter: { min: null, max: n }, error: false };
   }
 
-  async function runSearch(amountStr: string, patternStr: string) {
+  function resetResults() {
+    setView(null);
+    setSections(null);
+    setProgress(null);
+    setOpenAmounts(new Set());
+    setPatternMatches(null);
+    setCombos(null);
+  }
+
+  async function runSearch(
+    amountStr: string,
+    patternStr: string,
+    facadeSelOverride?: string
+  ) {
+    if (!handleRef.current) return;
+    const sel = facadeSelOverride ?? facadeSel;
+    const showAll = sel === "all";
     const amt = parseAmountInput(amountStr);
     const pat = parsePattern(patternStr);
     const active = patternIsActive(pat);
     const { filter: rngLen, error: maxRngErr } = parseMaxRng();
-    // A bound set alongside a positional filter (or on its own) also gates results.
     const filterActive = active || rngLen != null;
 
     if (maxRngErr) {
@@ -776,29 +860,29 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
 
     setSearching(true);
     setError(null);
-    setView(null);
-    setProgress(null);
-    setOpenAmounts(new Set());
-    setPatternMatches(null);
-    setCombos(null);
+    resetResults();
 
     try {
       const db = await import("@/lib/db");
-      const targets = showFacade
+      const targets = showAll
         ? facades
-        : facades.filter((f) => String(f.facadeId) === facadeSel);
-      const facadeIdParam = showFacade ? null : Number(facadeSel);
+        : facades.filter((f) => String(f.facadeId) === sel);
+      const facadeIdParam = showAll ? null : Number(sel);
 
-      // Single amount → award cards (unchanged behavior).
+      // Single amount → award cards (with reelStops).
       if (amt.kind === "single") {
         const awards: AwardResult[] = [];
         for (const facade of targets) {
-          const found = await db.findAwardsByAmount(handle, facade.facadeId, amt.v);
+          const found = await db.findAwardsByAmount(
+            handleRef.current,
+            facade.facadeId,
+            amt.v
+          );
           if (stale()) return;
           for (const award of found) {
             const reelStops = filterActive
-              ? await db.findMatchingReelStops(handle, award, pat, 2000, rngLen)
-              : await db.getReelStops(handle, award, 8);
+              ? await db.findMatchingReelStops(handleRef.current, award, pat, 2000, rngLen)
+              : await db.getReelStops(handleRef.current, award, 8);
             if (stale()) return;
             awards.push({ award, facadeKey: facade.facadeKey, reelStops });
           }
@@ -810,7 +894,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       // Range, no filter → just the amounts present in that range.
       if (amt.kind === "range" && !filterActive) {
         const amounts = await db.listAmounts(
-          handle,
+          handleRef.current,
           facadeIdParam,
           amt.lo,
           amt.hi
@@ -820,11 +904,10 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
         return;
       }
 
-      // Filter present (range+filter, or filter-only) → for each candidate
-      // amount, keep the awards whose reelStops match, scanning per amount.
+      // Filter present → for each candidate amount, keep matching awards.
       const lo = amt.kind === "range" ? amt.lo : null;
       const hi = amt.kind === "range" ? amt.hi : null;
-      const amounts = await db.listAmounts(handle, facadeIdParam, lo, hi);
+      const amounts = await db.listAmounts(handleRef.current, facadeIdParam, lo, hi);
       if (stale()) return;
       setProgress({ done: 0, total: amounts.length });
 
@@ -833,11 +916,11 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
         const a = amounts[i];
         const matched: AwardResult[] = [];
         for (const facade of targets) {
-          const found = await db.findAwardsByAmount(handle, facade.facadeId, a);
+          const found = await db.findAwardsByAmount(handleRef.current, facade.facadeId, a);
           if (stale()) return;
           for (const award of found) {
             const rs = await db.findMatchingReelStops(
-              handle,
+              handleRef.current,
               award,
               pat,
               2000,
@@ -863,16 +946,68 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     }
   }
 
+  /** Each-win mode: look up every selected win's payout in its own section. */
+  async function findEachWin() {
+    if (!handleRef.current) return;
+    const pat = parsePattern(pattern);
+    const active = patternIsActive(pat);
+    const { filter: rngLen, error: rngErr } = parseMaxRng();
+    if (rngErr) {
+      setError("RNG count must be a positive number or range, e.g. 300 or 100-300.");
+      return;
+    }
+    const constrained = active || rngLen != null;
+
+    const myId = ++runIdRef.current;
+    const stale = () => runIdRef.current !== myId;
+
+    setSearching(true);
+    setError(null);
+    resetResults();
+
+    try {
+      const db = await import("@/lib/db");
+      const targets = showFacade
+        ? facades
+        : facades.filter((f) => String(f.facadeId) === facadeSel);
+
+      const out: WinSection[] = [];
+      for (const w of wins) {
+        const awards: AwardResult[] = [];
+        for (const facade of targets) {
+          const found = await db.findAwardsByAmount(
+            handleRef.current,
+            facade.facadeId,
+            w.payout
+          );
+          if (stale()) return;
+          for (const award of found) {
+            const reelStops = constrained
+              ? await db.findMatchingReelStops(handleRef.current, award, pat, 2000, rngLen)
+              : await db.getReelStops(handleRef.current, award, 8);
+            if (stale()) return;
+            awards.push({ award, facadeKey: facade.facadeKey, reelStops });
+          }
+        }
+        out.push({ key: w.key, label: w.label, amount: w.payout, awards });
+      }
+      setSections(out);
+    } catch (e) {
+      if (!stale()) setError(e instanceof Error ? e.message : "Query failed.");
+    } finally {
+      if (!stale()) setSearching(false);
+    }
+  }
+
   function cancel() {
     runIdRef.current++;
     setSearching(false);
     setProgress(null);
   }
 
-  /** Find the smallest and largest award amount for the selected bet line,
-   *  honoring the reelStop filter when one is entered. Requires a specific bet
-   *  line (not "All bet lines"). */
+  /** Smallest & largest award amount for the selected bet line (honors filter). */
   async function runMinMax() {
+    if (!handleRef.current) return;
     if (showFacade) {
       setError("Select a specific bet line to find its min–max amount.");
       return;
@@ -894,16 +1029,12 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
 
     setSearching(true);
     setError(null);
-    setView(null);
-    setProgress(null);
-    setOpenAmounts(new Set());
-    setPatternMatches(null);
-    setCombos(null);
+    resetResults();
 
     try {
       const db = await import("@/lib/db");
       const res = await db.findMinMaxAmount(
-        handle,
+        handleRef.current,
         facade.facadeId,
         active ? pat : null,
         rngLen
@@ -935,11 +1066,9 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
   const canSeePatterns =
     (amtParsed.kind === "single" || amtParsed.kind === "range") && !!data;
 
-  /** List patterns whose total equals the entered amount, or falls inside the
-   *  entered range, at the selected bet line(s). Gated to bet lines where the
-   *  loaded .db actually has that amount (see below). */
+  /** List patterns whose total equals / falls inside the entered amount. */
   async function seePatterns() {
-    // Resolve the entered amount/range into an inclusive [lo, hi] window.
+    if (!handleRef.current) return;
     let lo: number;
     let hi: number;
     if (amtParsed.kind === "single") {
@@ -956,30 +1085,20 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       return;
     }
     setError(null);
-    // A specific bet line → just that paytable; "all" → every bet level.
-    const selKey = facades.find(
-      (f) => String(f.facadeId) === facadeSel
-    )?.facadeKey;
+    const selKey = facades.find((f) => String(f.facadeId) === facadeSel)?.facadeKey;
     let tables = showFacade
       ? data.paytables
       : data.paytables.filter((p) => p.facadeKey === selKey);
     if (!showFacade && tables.length === 0) {
-      // The selected DB facade's key doesn't match any XML bet-line key (Type 2
-      // convention mismatch, e.g. "D10_B1" vs "75_B1_FG3"), so it can't be scoped
-      // to a single bet line — consider all XML bet lines instead of none.
       tables = data.paytables;
     }
 
-    // Gate by the .db: only keep bet lines that actually have an Award for this
-    // amount/range, so pattern results reflect real outcomes (not just what the
-    // paytable could theoretically pay). For "All bet lines" this narrows to the
-    // bet lines that contain the amount.
     try {
       const db = await import("@/lib/db");
       const presentIds =
         amtParsed.kind === "range"
-          ? await db.findFacadesWithAmountInRange(handle, lo, hi)
-          : await db.findFacadesWithAmount(handle, lo);
+          ? await db.findFacadesWithAmountInRange(handleRef.current, lo, hi)
+          : await db.findFacadesWithAmount(handleRef.current, lo);
       const presentKeys = new Set(
         facades
           .filter((f) => presentIds.includes(f.facadeId))
@@ -987,24 +1106,16 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       );
       const gated = tables.filter((t) => presentKeys.has(t.facadeKey));
       if (gated.length > 0) {
-        // The DB's facade keys line up with the XML bet lines (typical Type 1):
-        // keep only the bet lines the DB actually has this amount for.
         tables = gated;
       } else if (presentIds.length === 0) {
-        // The amount/range doesn't exist anywhere in the DB.
         tables = [];
       }
-      // else: the amount exists in the DB but under a different facade-key
-      // convention than the XML (common for Type 2 DBs, e.g. "D10_B1" vs
-      // "75_B1_FG3"), so the keys can't be matched up. Fall back to the selected
-      // XML bet line(s) ungated rather than showing nothing.
     } catch (e) {
       setError(e instanceof Error ? e.message : "DB lookup failed.");
       return;
     }
 
     if (tables.length === 0) {
-      // Amount isn't present in the .db for the selected bet line(s).
       setPatternMatches({ lo, hi, matches: [] });
       setCombos(null);
       return;
@@ -1021,21 +1132,20 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     setCombos({ lo, hi, combos: found, capped });
   }
 
-  // The section-2 XML paytable that "map DB amount → Patterns" matches against.
+  // The section-1 XML paytable that "map DB amount → Patterns" matches against.
   const mapTable = data?.paytables.find((p) => p.facadeKey === betKey) ?? null;
-  const canMap = !showFacade && !!mapTable && !searching;
+  const canMap = !showFacade && !!mapTable && !searching && ready;
 
-  /** For the selected DB bet line, take its Min–Max amount range (honoring the
-   *  reelStop filter when present) and show every DB amount in that range for
-   *  which the section-2 XML bet level has a single pattern or combination whose
-   *  total equals it. Amounts with no matching pattern are omitted. */
+  /** For the selected DB bet line's min–max range, show every DB amount the
+   *  section-1 bet level can pay (single or combination). */
   async function mapAmountsToPatterns() {
+    if (!handleRef.current) return;
     if (showFacade) {
       setError("Select a specific bet line to map amounts to patterns.");
       return;
     }
     if (!data || !mapTable) {
-      setError("Select a bet level in section 2 (Select bet level) first.");
+      setError("Select a bet level in section 1 (Select bet level) first.");
       return;
     }
     const facade = facades.find((f) => String(f.facadeId) === facadeSel);
@@ -1055,16 +1165,12 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
 
     setSearching(true);
     setError(null);
-    setView(null);
-    setProgress(null);
-    setOpenAmounts(new Set());
-    setPatternMatches(null);
-    setCombos(null);
+    resetResults();
 
     try {
       const db = await import("@/lib/db");
       const mm = await db.findMinMaxAmount(
-        handle,
+        handleRef.current,
         facade.facadeId,
         active ? pat : null,
         rngLen
@@ -1079,7 +1185,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
         return;
       }
       const amounts = await db.listAmountsMatchingPattern(
-        handle,
+        handleRef.current,
         facade.facadeId,
         mm.min,
         mm.max,
@@ -1089,10 +1195,6 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
       if (stale()) return;
       setProgress({ done: 0, total: amounts.length });
 
-      // Match patterns per exact amount: with lo === hi === a the combo DFS
-      // records only combinations summing exactly to `a`, and the MAX_COMBOS cap
-      // applies per amount (never exhausted by irrelevant totals). Keep only
-      // amounts that have at least one single or combination.
       const groups: MappedGroup[] = [];
       let capped = false;
       for (let i = 0; i < amounts.length; i++) {
@@ -1107,8 +1209,6 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
           });
         }
         if (res.capped) capped = true;
-        // Yield periodically so the scan stays cancelable and the UI can paint
-        // (computePatternMatches is synchronous CPU work).
         if (i % 10 === 9) {
           setProgress({ done: i + 1, total: amounts.length });
           await new Promise((r) => setTimeout(r, 0));
@@ -1143,10 +1243,36 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     });
   }
 
+  // Auto-find: a "create pattern" click bumps autoFindToken. Point this panel at
+  // the same bet line, mirror its filters, reset the amount to the (new) total,
+  // and run the lookup. Runs after the parent re-render, so totalPayout is fresh.
+  const lastAutoToken = useRef(autoFindToken ?? 0);
+  useEffect(() => {
+    const token = autoFindToken ?? 0;
+    if (token === lastAutoToken.current) return;
+    lastAutoToken.current = token;
+    if (status !== "ready" || !handleRef.current) return;
+    const targetId =
+      autoFindFacadeId != null &&
+      facades.some((f) => f.facadeId === autoFindFacadeId)
+        ? autoFindFacadeId
+        : facades.find((f) => f.facadeKey === autoFindFacadeKey)?.facadeId ?? null;
+    if (targetId == null) return;
+    const pat = autoFindPattern ?? "";
+    const rng = autoFindMaxRng ?? "";
+    const sel = String(targetId);
+    setFacadeSel(sel);
+    setPattern(pat);
+    setMaxRng(rng);
+    setCustom(false);
+    setMode("total");
+    void runSearch(String(totalPayout), pat, sel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFindToken]);
+
   // Driven by the reelStrip viewer's SEARCH button: fill the filter and run.
   useImperativeHandle(ref, () => ({
     runWithFilter(filter: string) {
-      setOpen(true);
       setPattern(filter);
       void runSearch(amount, filter);
       requestAnimationFrame(() =>
@@ -1158,158 +1284,264 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
     },
   }));
 
+  const onEnter = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      if (eachMode) void findEachWin();
+      else void runSearch(amount, pattern);
+    }
+  };
+
+  const hasResults =
+    !!patternMatches || !!view || (eachMode && !!sections) || !!progress;
+
   return (
-    <div className="panel" ref={panelRef}>
-      <button
-        type="button"
-        className="panel-title panel-title-toggle"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span>{open ? "▾" : "▸"} DB amount search</span>
-        <span className="muted small">amount · range · filter</span>
-      </button>
+    <div className="panel db-viewer" ref={panelRef}>
+      <div className="panel-title">DB search &amp; reelStops</div>
 
-      {open && (
-        <div className="amount-search">
-          <label className="db-field">
-            <span className="db-label">Facade (bet line)</span>
-            <select
-              className="select"
-              value={facadeSel}
-              onChange={(e) => setFacadeSel(e.target.value)}
-            >
-              <option value="all">All bet lines</option>
-              {facades.map((f) => (
-                <option key={f.facadeId} value={String(f.facadeId)}>
-                  {f.facadeKey}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="db-field">
-            <span className="db-label">Amount or range</span>
-            <div className="amount-input-row">
-              <input
-                className="select"
-                type="text"
-                value={amount}
-                onChange={(e) => {
-                  setAmount(e.target.value);
-                  setPatternMatches(null);
-                  setCombos(null);
-                }}
-                placeholder="e.g. 500 or 500-1000"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void runSearch(amount, pattern);
-                }}
-              />
+      <div className="db-viewer-cols">
+        {/* ── Inputs column ─────────────────────────────────────────── */}
+        <div className="db-inputs">
+          <div className="db-type-row">
+            <span className="db-label">DB structure</span>
+            <div className="seg">
               <button
                 type="button"
-                className="btn btn-alt"
-                onClick={() => void runMinMax()}
-                disabled={searching || showFacade}
-                title={
-                  showFacade
-                    ? "Select a specific bet line first"
-                    : "Show the smallest and largest award amount for the selected bet line (honors the reelStop filter)"
-                }
+                className={"seg-btn" + (dbType === "type1" ? " on" : "")}
+                onClick={() => setDbType("type1")}
+                disabled={status === "opening"}
+                title="RngValues stored directly on the Presentation table (e.g. HFNG_10k.db)"
               >
-                Min–Max
+                APP Game
+              </button>
+              <button
+                type="button"
+                className={"seg-btn" + (dbType === "type2" ? " on" : "")}
+                onClick={() => setDbType("type2")}
+                disabled={status === "opening"}
+                title="RngValues stored in the Segment table, concatenated per presentation (e.g. MMMP.db)"
+              >
+                HPP Game
               </button>
             </div>
-          </label>
+          </div>
 
-          <label className="db-field">
-            <span className="db-label">
-              reelStop filter (per position, blank = any)
-            </span>
-            <input
-              className="select db-search"
-              type="text"
-              value={pattern}
-              onChange={(e) => setPattern(e.target.value)}
-              placeholder="e.g. ,,,,,,,,2"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void runSearch(amount, pattern);
-              }}
-            />
-          </label>
-
-          <p className="muted small">
-            Leave the amount blank and type a filter to find every amount that
-            has it (slower — pair with a range to narrow the scan).
-          </p>
-
-          <div className="amount-actions">
+          <div className="upload-row">
             <button
               type="button"
               className="btn"
-              onClick={() => void runSearch(amount, pattern)}
-              disabled={searching}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={status === "opening"}
             >
-              {searching ? "Searching…" : "Search DB"}
+              {status === "opening" ? "Opening…" : "Choose .db file…"}
             </button>
-            <button
-              type="button"
-              className="btn btn-alt"
-              onClick={() => void seePatterns()}
-              disabled={!canSeePatterns || searching}
-              title={
-                canSeePatterns
-                  ? "Find patterns whose total (incl. auto rows) equals this amount, or falls in this range"
-                  : "Enter an amount or range (and load the paytable XML)"
-              }
-            >
-              see patterns
-            </button>
-            {searching && (
-              <button type="button" className="btn btn-small" onClick={cancel}>
-                Cancel
-              </button>
-            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".db,.sqlite,.sqlite3,application/octet-stream"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleFile(f);
+                e.target.value = "";
+              }}
+            />
           </div>
+          {fileName && <span className="loaded-name">{fileName}</span>}
 
-          <div className="amount-actions">
-            <button
-              type="button"
-              className="btn btn-alt"
-              onClick={() => void mapAmountsToPatterns()}
-              disabled={!canMap}
-              title={
-                showFacade
-                  ? "Select a specific bet line first"
-                  : !mapTable
-                    ? "Choose a bet level in section 2 (Select bet level) first"
-                    : "For this bet line's min–max amount range, show every DB amount the section-2 bet level can pay (single or combination)"
-              }
-            >
-              map DB amount → Patterns
-            </button>
-          </div>
+          {!ready && (
+            <p className="muted small">
+              Choose the DB structure, then upload the outcomes .db to search.
+            </p>
+          )}
 
-          {isType2 && (
-            <label className="db-field">
-              <span className="db-label">
-                RNG count (HPP only, single or range, blank = no bound)
-              </span>
-              <input
-                className="select"
-                type="text"
-                value={maxRng}
-                onChange={(e) => setMaxRng(e.target.value)}
-                placeholder="e.g. 300 or 100-300"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void runSearch(amount, pattern);
-                }}
-              />
-              <span className="muted small">
-                {/* Keep only results whose RNG value count fits — “300” = up to 300,
-                “100-300” = between 100 and 300. Applies to Search DB and “map DB
-                amount → Patterns”. */}
-              </span>
-            </label>
+          {ready && (
+            <>
+              <label className="db-field">
+                <span className="db-label">Facade (bet line)</span>
+                <select
+                  className="select"
+                  value={facadeSel}
+                  onChange={(e) => setFacadeSel(e.target.value)}
+                >
+                  <option value="all">All bet lines</option>
+                  {facades.map((f) => (
+                    <option key={f.facadeId} value={String(f.facadeId)}>
+                      {(facadesWithResults.has(f.facadeId) ? "✅ " : "　") +
+                        f.facadeKey}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="db-field">
+                <span className="db-label">
+                  Amount or range {custom ? "(custom)" : "· tool total"}
+                </span>
+                <div className="amount-input-row">
+                  <input
+                    className={"select amount-field" + (custom ? "" : " auto")}
+                    type="text"
+                    value={amount}
+                    onChange={(e) => {
+                      setCustom(true);
+                      setAmount(e.target.value);
+                      setPatternMatches(null);
+                      setCombos(null);
+                    }}
+                    placeholder="e.g. 500 or 500-1000"
+                    onKeyDown={onEnter}
+                  />
+                  {custom && (
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      onClick={() => setCustom(false)}
+                      title="Reset to the tool's total payout"
+                    >
+                      ↺ total
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-alt"
+                    onClick={() => void runMinMax()}
+                    disabled={searching || showFacade}
+                    title={
+                      showFacade
+                        ? "Select a specific bet line first"
+                        : "Show the smallest and largest award amount for the selected bet line (honors the reelStop filter)"
+                    }
+                  >
+                    Min–Max
+                  </button>
+                </div>
+              </label>
+
+              {multiWin && (
+                <div className="db-field">
+                  <span className="db-label">Look up</span>
+                  <div className="seg">
+                    <button
+                      type="button"
+                      className={"seg-btn" + (mode === "total" ? " on" : "")}
+                      onClick={() => setMode("total")}
+                    >
+                      Total win
+                    </button>
+                    <button
+                      type="button"
+                      className={"seg-btn" + (mode === "each" ? " on" : "")}
+                      onClick={() => setMode("each")}
+                    >
+                      Each win
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <label className="db-field">
+                <span className="db-label">
+                  reelStop filter (per position, blank = any)
+                </span>
+                <input
+                  className="select db-search"
+                  type="text"
+                  value={pattern}
+                  onChange={(e) => setPattern(e.target.value)}
+                  placeholder="e.g. ,,,,,,,,2"
+                  onKeyDown={onEnter}
+                />
+              </label>
+
+              {isType2 && (
+                <label className="db-field">
+                  <span className="db-label">
+                    RNG count (HPP only, single or range, blank = no bound)
+                  </span>
+                  <input
+                    className="select"
+                    type="text"
+                    value={maxRng}
+                    onChange={(e) => setMaxRng(e.target.value)}
+                    placeholder="e.g. 300 or 100-300"
+                    onKeyDown={onEnter}
+                  />
+                </label>
+              )}
+
+              <p className="muted small">
+                Leave the amount blank and type a filter to find every amount that
+                has it (slower — pair with a range to narrow the scan).
+              </p>
+
+              <div className="amount-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() =>
+                    eachMode ? void findEachWin() : void runSearch(amount, pattern)
+                  }
+                  disabled={searching}
+                >
+                  {searching ? "Searching…" : "Search DB"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-alt"
+                  onClick={() => void seePatterns()}
+                  disabled={!canSeePatterns || searching}
+                  title={
+                    canSeePatterns
+                      ? "Find patterns whose total (incl. auto rows) equals this amount, or falls in this range"
+                      : "Enter an amount or range (and load the paytable XML)"
+                  }
+                >
+                  see patterns
+                </button>
+                {searching && (
+                  <button type="button" className="btn btn-small" onClick={cancel}>
+                    Cancel
+                  </button>
+                )}
+              </div>
+
+              <div className="amount-actions">
+                <button
+                  type="button"
+                  className="btn btn-alt"
+                  onClick={() => void mapAmountsToPatterns()}
+                  disabled={!canMap}
+                  title={
+                    showFacade
+                      ? "Select a specific bet line first"
+                      : !mapTable
+                        ? "Choose a bet level in section 1 (Select bet level) first"
+                        : "For this bet line's min–max amount range, show every DB amount the section-1 bet level can pay (single or combination)"
+                  }
+                >
+                  map DB amount → Patterns
+                </button>
+              </div>
+
+              {error && <p className="error">{error}</p>}
+            </>
+          )}
+        </div>
+
+        {/* ── Results column ────────────────────────────────────────── */}
+        <div className="db-results">
+          {!ready ? (
+            <p className="muted small">
+              Results appear here once a .db is loaded and searched.
+            </p>
+          ) : !hasResults && !error ? (
+            <p className="muted small">Run a search to see results.</p>
+          ) : null}
+
+          {progress && (
+            <p className="muted small">
+              Scanned {progress.done} / {progress.total} amounts…
+            </p>
           )}
 
           {patternMatches &&
@@ -1333,13 +1565,50 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
               );
             })()}
 
-          {progress && (
-            <p className="muted small">
-              Scanned {progress.done} / {progress.total} amounts…
-            </p>
+          {eachMode && sections && (
+            <div className="win-sections">
+              {sections.map((sec) => {
+                const open = openSections.has(sec.key);
+                return (
+                  <section key={sec.key} className="win-section">
+                    <button
+                      type="button"
+                      className="win-section-head"
+                      aria-expanded={open}
+                      onClick={() =>
+                        setOpenSections((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(sec.key)) next.delete(sec.key);
+                          else next.add(sec.key);
+                          return next;
+                        })
+                      }
+                    >
+                      <span className="win-section-caret">{open ? "▾" : "▸"}</span>
+                      <span className="win-section-label">{sec.label}</span>
+                      <span className="award-badge">
+                        {sec.awards.length} award
+                        {sec.awards.length === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                    {open && (
+                      <AwardResults
+                        results={sec.awards}
+                        pattern={pattern}
+                        showFacade={showFacade}
+                        onApply={onApply}
+                        onSlot={onSlot}
+                        reelStripLoaded={reelStripLoaded}
+                        emptyText={`No award with Amount = ${sec.amount.toLocaleString()}${
+                          showFacade ? " in any facade." : " in this facade."
+                        }`}
+                      />
+                    )}
+                  </section>
+                );
+              })}
+            </div>
           )}
-
-          {error && <p className="error">{error}</p>}
 
           {view?.mode === "mapped" &&
             (view.groups.length === 0 ? (
@@ -1347,8 +1616,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
                 No DB amount between {view.lo.toLocaleString()} and{" "}
                 {view.hi.toLocaleString()}
                 {view.filtered ? " (matching the reelStop filter)" : ""} has a
-                pattern or combination at{" "}
-                <strong>{betKey}</strong>.
+                pattern or combination at <strong>{betKey}</strong>.
               </p>
             ) : (
               <>
@@ -1417,9 +1685,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
                   {view.max.toLocaleString()}
                 </span>
               </div>
-              {view.filtered && (
-                <p className="muted small">filter applied</p>
-              )}
+              {view.filtered && <p className="muted small">filter applied</p>}
             </div>
           )}
 
@@ -1457,6 +1723,7 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
                       type="button"
                       className="amount-chip"
                       onClick={() => {
+                        setCustom(true);
                         setAmount(String(a));
                         void runSearch(String(a), pattern);
                       }}
@@ -1515,10 +1782,9 @@ const DbAmountSearch = forwardRef<DbAmountSearchHandle, Props>(
               </div>
             ))}
         </div>
-      )}
+      </div>
     </div>
   );
-  }
-);
+});
 
-export default DbAmountSearch;
+export default DbViewer;
