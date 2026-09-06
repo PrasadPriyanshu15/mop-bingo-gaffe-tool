@@ -6,6 +6,9 @@ import MiniPattern from "./MiniPattern";
 
 interface Props {
   patterns: Pattern[];
+  /** Per-pattern payout totals for the active bet line (each threshold's suffix
+   *  sum). Enables searching the list by amount or amount range. */
+  patternAmounts?: Map<number, number[]>;
   /** Every currently-selected pattern id, in the order they were added. */
   selectedIds: number[];
   /** Replace the whole selection with just this id (a fresh single pick). */
@@ -14,12 +17,38 @@ interface Props {
   onToggle: (id: number) => void;
 }
 
+/** What the one search box resolves to. `#123` → id, plain number → amount,
+ *  `100-500` → amount range, anything else → name (the default). */
+type Search =
+  | { kind: "none" }
+  | { kind: "id"; digits: string }
+  | { kind: "name"; q: string }
+  | { kind: "amount"; v: number }
+  | { kind: "range"; lo: number; hi: number };
+
+function parseSearch(raw: string): Search {
+  const t = raw.trim();
+  if (t === "") return { kind: "none" };
+  if (t.startsWith("#"))
+    return { kind: "id", digits: t.slice(1).replace(/[^0-9]/g, "") };
+  const rng = t.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/);
+  if (rng) {
+    let lo = Number(rng[1]);
+    let hi = Number(rng[2]);
+    if (lo > hi) [lo, hi] = [hi, lo];
+    return { kind: "range", lo, hi };
+  }
+  if (/^\d+(?:\.\d+)?$/.test(t)) return { kind: "amount", v: Number(t) };
+  return { kind: "name", q: t.toLowerCase() };
+}
+
 /** Searchbar + scrollable list of patterns, each shown as name + mini image.
  *  Picks a single pattern by default; the "+ Add" button next to the search
  *  switches to add mode, where clicks accumulate several patterns so their
  *  payouts can be combined (same ballQty/range logic as a DB combination). */
 export default function PatternSelect({
   patterns,
+  patternAmounts,
   selectedIds,
   onSelect,
   onToggle,
@@ -33,14 +62,44 @@ export default function PatternSelect({
     [patterns]
   );
 
+  const search = useMemo(() => parseSearch(query), [query]);
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     const sorted = [...patterns].sort((a, b) => a.name.localeCompare(b.name));
-    if (!q) return sorted;
-    return sorted.filter(
-      (p) => p.name.toLowerCase().includes(q) || String(p.id).includes(q)
-    );
-  }, [patterns, query]);
+    switch (search.kind) {
+      case "none":
+        return sorted;
+      case "id":
+        return search.digits === ""
+          ? sorted
+          : sorted.filter((p) => String(p.id).includes(search.digits));
+      case "name":
+        return sorted.filter((p) => p.name.toLowerCase().includes(search.q));
+      case "amount":
+        return sorted.filter((p) =>
+          (patternAmounts?.get(p.id) ?? []).some((a) => a === search.v)
+        );
+      case "range":
+        return sorted.filter((p) =>
+          (patternAmounts?.get(p.id) ?? []).some(
+            (a) => a >= search.lo && a <= search.hi
+          )
+        );
+    }
+  }, [patterns, search, patternAmounts]);
+
+  // For an amount / range search, the matching payout totals of a pattern, so
+  // each row can show why it matched.
+  const amountMatchesFor = (id: number): number[] => {
+    if (search.kind === "amount")
+      return (patternAmounts?.get(id) ?? []).filter((a) => a === search.v);
+    if (search.kind === "range")
+      return (patternAmounts?.get(id) ?? []).filter(
+        (a) => a >= search.lo && a <= search.hi
+      );
+    return [];
+  };
+  const amountSearch = search.kind === "amount" || search.kind === "range";
 
   // Add mode only makes sense once a base pattern is chosen.
   const canAdd = selectedIds.length > 0;
@@ -53,9 +112,10 @@ export default function PatternSelect({
         <input
           className="search pattern-search-input"
           type="search"
-          placeholder="Search patterns by name or id…"
+          placeholder="Name · #id · amount · 100-500 range…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          title="Search by pattern name, #id (prefix #), a payout amount (just the number), or an amount range (e.g. 100-500)"
         />
         <button
           type="button"
@@ -109,6 +169,7 @@ export default function PatternSelect({
       <div className="pattern-list">
         {filtered.map((p) => {
           const isSel = selectedSet.has(p.id);
+          const amts = amountSearch ? amountMatchesFor(p.id) : [];
           return (
             <button
               type="button"
@@ -120,6 +181,18 @@ export default function PatternSelect({
               <span className="pattern-name">
                 {p.name}
                 <span className="pattern-id">#{p.id}</span>
+                {amts.length > 0 && (
+                  <span
+                    className="pattern-amt"
+                    title="Payout total(s) matching your search (row + higher auto rows)"
+                  >
+                    {amts
+                      .slice()
+                      .sort((a, b) => a - b)
+                      .map((a) => a.toLocaleString())
+                      .join(" · ")}
+                  </span>
+                )}
               </span>
               {isSel && (
                 <span className="pattern-check" aria-hidden="true">
@@ -130,7 +203,17 @@ export default function PatternSelect({
           );
         })}
         {filtered.length === 0 && (
-          <p className="muted">No patterns match “{query}”.</p>
+          <p className="muted">
+            {amountSearch
+              ? `No pattern in this bet line pays ${
+                  search.kind === "range"
+                    ? `${search.lo.toLocaleString()}–${search.hi.toLocaleString()}`
+                    : search.kind === "amount"
+                      ? search.v.toLocaleString()
+                      : ""
+                }.`
+              : `No patterns match “${query}”.`}
+          </p>
         )}
       </div>
     </div>

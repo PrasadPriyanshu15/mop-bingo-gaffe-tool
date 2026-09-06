@@ -365,6 +365,25 @@ export default function Home() {
     return m;
   }, [paytable]);
 
+  // Every payout total each bet-line pattern can pay: for each threshold, the
+  // suffix sum of its payout rows (the picked row plus all higher auto rows —
+  // what selecting that ball qty actually pays). Powers the amount / range
+  // search in the pattern picker (section 3).
+  const patternAmounts = useMemo(() => {
+    const m = new Map<number, number[]>();
+    for (const [pid, arr] of entriesByPattern) {
+      const sorted = [...arr].sort((a, b) => a.ballQty - b.ballQty);
+      let suffix = 0;
+      const sums: number[] = [];
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        suffix += sorted[i].payout;
+        sums.push(suffix);
+      }
+      m.set(pid, sums);
+    }
+    return m;
+  }, [entriesByPattern]);
+
   // Base packed order, then nudge each selected pattern into its chosen ball-qty
   // band so the emitted gaffe pays the intended amount instead of an inflated
   // total from a pattern that finished early and lit a lower tier. See
@@ -544,6 +563,7 @@ export default function Home() {
             {canPick && (
               <PatternSelect
                 patterns={betLinePatterns}
+                patternAmounts={patternAmounts}
                 selectedIds={selectedIds}
                 onSelect={selectOnlyPattern}
                 onToggle={togglePattern}

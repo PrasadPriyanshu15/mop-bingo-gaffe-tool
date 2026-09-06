@@ -1160,6 +1160,19 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
     }
     const constrained = active || rngLen != null;
 
+    // A hand-typed amount/range in the Amount field narrows the mapped scan to
+    // those bounds; a blank field — or the auto-filled tool total (not custom) —
+    // falls back to the bet line's full min–max range.
+    const amt = custom ? parseAmountInput(amount) : { kind: "none" as const };
+    if (amt.kind === "invalid") {
+      setError("Enter a valid amount or range, e.g. 500 or 500-1000.");
+      return;
+    }
+    const rangeLo =
+      amt.kind === "range" ? amt.lo : amt.kind === "single" ? amt.v : null;
+    const rangeHi =
+      amt.kind === "range" ? amt.hi : amt.kind === "single" ? amt.v : null;
+
     const myId = ++runIdRef.current;
     const stale = () => runIdRef.current !== myId;
 
@@ -1184,11 +1197,14 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
         );
         return;
       }
+      // Entered range wins; blank uses the bet line's full min–max.
+      const lo = rangeLo ?? mm.min;
+      const hi = rangeHi ?? mm.max;
       const amounts = await db.listAmountsMatchingPattern(
         handleRef.current,
         facade.facadeId,
-        mm.min,
-        mm.max,
+        lo,
+        hi,
         active ? pat : null,
         rngLen
       );
@@ -1219,8 +1235,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
       setView({
         mode: "mapped",
         groups,
-        lo: mm.min,
-        hi: mm.max,
+        lo,
+        hi,
         filtered: constrained,
         capped,
       });
@@ -1516,7 +1532,7 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
                       ? "Select a specific bet line first"
                       : !mapTable
                         ? "Choose a bet level in section 1 (Select bet level) first"
-                        : "For this bet line's min–max amount range, show every DB amount the section-1 bet level can pay (single or combination)"
+                        : "For the selected bet line, show every DB amount the section-1 bet level can pay (single or combination). Enter an amount or range above to narrow it; blank uses the bet line's full min–max range."
                   }
                 >
                   map DB amount → Patterns

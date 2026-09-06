@@ -165,7 +165,9 @@ export default function GaffeResult({
       {reelStops.length > 0 && (
         <div className="result-field">
           <span className="result-key">reelStops</span>
-          <code className="result-val">[{reelStops.join(", ")}]</code>
+          <code className="result-val reelstops-val">
+            [{reelStops.join(", ")}]
+          </code>
         </div>
       )}
 
