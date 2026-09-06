@@ -375,6 +375,65 @@ body {
   color: #fff;
   border-color: var(--accent);
 }
+
+/* ── Credit → Currency setup panel ──────────────────────────────────── */
+.c2c-formula-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.c2c-formula-input {
+  flex: 1;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+}
+.c2c-formula-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.c2c-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.c2c-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.c2c-toggle-btn {
+  background: var(--panel-2);
+  color: var(--muted);
+  border: none;
+  padding: 6px 14px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.c2c-toggle-btn + .c2c-toggle-btn {
+  border-left: 1px solid var(--border);
+}
+.c2c-toggle-btn:hover:not(:disabled):not(.on) {
+  color: var(--text);
+}
+.c2c-toggle-btn.on {
+  background: var(--accent);
+  color: #fff;
+}
+.c2c-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .ws-result {
   display: flex;
   flex-direction: column;

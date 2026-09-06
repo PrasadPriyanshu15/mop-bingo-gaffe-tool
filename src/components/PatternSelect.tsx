@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Pattern } from "@/lib/types";
+import { useCurrency } from "@/lib/CurrencyContext";
 import MiniPattern from "./MiniPattern";
 
 interface Props {
@@ -53,6 +54,7 @@ export default function PatternSelect({
   onSelect,
   onToggle,
 }: Props) {
+  const { fmt } = useCurrency();
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -189,7 +191,7 @@ export default function PatternSelect({
                     {amts
                       .slice()
                       .sort((a, b) => a - b)
-                      .map((a) => a.toLocaleString())
+                      .map((a) => fmt(a))
                       .join(" · ")}
                   </span>
                 )}

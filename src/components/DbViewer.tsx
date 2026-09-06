@@ -18,6 +18,10 @@ import {
   type PatternWin,
 } from "@/lib/evaluate";
 import AwardResults, { type AwardResult } from "./AwardResults";
+import { useCurrency } from "@/lib/CurrencyContext";
+
+/** Signature of the credit→currency display formatter threaded to helpers. */
+type Fmt = (credits: number) => string;
 
 /**
  * True AllPatternsPaid payout for a set of chosen pattern thresholds at one bet
@@ -70,13 +74,13 @@ function inGameFor(
 }
 
 /** Tooltip listing the incidental in-game wins for a match/combo. */
-function extrasTitle(extras: PatternWin[]): string {
+function extrasTitle(extras: PatternWin[], fmt: Fmt): string {
   return (
     "Also won in-game (AllPatternsPaid):\n" +
     extras
       .map(
         (e) =>
-          `${e.patternName} #${e.patternId} · ${e.completionBall} balls · ${e.payout.toLocaleString()}`
+          `${e.patternName} #${e.patternId} · ${e.completionBall} balls · ${fmt(e.payout)}`
       )
       .join("\n")
   );
@@ -371,27 +375,26 @@ function renderSingle(
   m: PatternMatch,
   key: number | string,
   withFacade: boolean,
-  onCreatePattern: (facadeKey: string, patternId: number, ballQty: number) => void
+  onCreatePattern: (facadeKey: string, patternId: number, ballQty: number) => void,
+  fmt: Fmt
 ) {
   return (
     <div key={key} className="pattern-match">
       <div className="pattern-match-info">
         <span className="pattern-match-name">
           {m.patternName} <span className="pattern-id">#{m.patternId}</span>
-          <span className="pattern-match-amount">
-            {m.total.toLocaleString()}
-          </span>
+          <span className="pattern-match-amount">{fmt(m.total)}</span>
         </span>
         <span className="pattern-match-meta">
           {withFacade ? `${m.facadeKey} · ` : ""}
           ball call {m.ballQty}
           {m.autoCount > 0
-            ? ` · ${m.payout.toLocaleString()} + ${m.autoCount} auto`
+            ? ` · ${fmt(m.payout)} + ${m.autoCount} auto`
             : ""}
         </span>
         {m.extras.length > 0 && (
-          <span className="ingame-flag" title={extrasTitle(m.extras)}>
-            in-game {m.inGameTotal.toLocaleString()} · +{m.extras.length} also won
+          <span className="ingame-flag" title={extrasTitle(m.extras, fmt)}>
+            in-game {fmt(m.inGameTotal)} · +{m.extras.length} also won
           </span>
         )}
       </div>
@@ -415,7 +418,8 @@ function renderCombo(
   onCreatePatterns: (
     facadeKey: string,
     selections: { patternId: number; ballQty: number }[]
-  ) => void
+  ) => void,
+  fmt: Fmt
 ) {
   return (
     <div key={key} className="pattern-combo">
@@ -426,12 +430,10 @@ function renderCombo(
           {c.hasSubPattern ? (
             <span className="badge badge-sub">incl. sub-pattern</span>
           ) : null}
-          <span className="pattern-match-amount">
-            {c.total.toLocaleString()}
-          </span>
+          <span className="pattern-match-amount">{fmt(c.total)}</span>
           {c.extras.length > 0 && (
-            <span className="ingame-flag" title={extrasTitle(c.extras)}>
-              in-game {c.inGameTotal.toLocaleString()} · +{c.extras.length} also
+            <span className="ingame-flag" title={extrasTitle(c.extras, fmt)}>
+              in-game {fmt(c.inGameTotal)} · +{c.extras.length} also
               won
             </span>
           )}
@@ -459,14 +461,12 @@ function renderCombo(
             <div className="pattern-match-info">
               <span className="pattern-match-name">
                 {m.patternName} <span className="pattern-id">#{m.patternId}</span>
-                <span className="pattern-match-amount">
-                  {m.total.toLocaleString()}
-                </span>
+                <span className="pattern-match-amount">{fmt(m.total)}</span>
               </span>
               <span className="pattern-match-meta">
                 ball call {m.ballQty}
                 {m.autoCount > 0
-                  ? ` · ${m.payout.toLocaleString()} + ${m.autoCount} auto`
+                  ? ` · ${fmt(m.payout)} + ${m.autoCount} auto`
                   : ""}
               </span>
             </div>
@@ -505,6 +505,7 @@ function PatternResults({
     selections: { patternId: number; ballQty: number }[]
   ) => void;
 }) {
+  const { fmt } = useCurrency();
   const [tab, setTab] = useState<PatternTab>("single");
 
   const byTab: Record<PatternTab, PatternCombo[]> = {
@@ -574,7 +575,7 @@ function PatternResults({
             {amtLabel}
           </div>
           {singles.map((m, i) =>
-            renderSingle(m, i, showFacade, onCreatePattern)
+            renderSingle(m, i, showFacade, onCreatePattern, fmt)
           )}
         </div>
       ) : (
@@ -586,7 +587,7 @@ function PatternResults({
             {capped ? ` · first ${MAX_COMBOS}` : ""}
           </div>
           {byTab[active].map((c, i) =>
-            renderCombo(c, i, showFacade, onCreatePatterns)
+            renderCombo(c, i, showFacade, onCreatePatterns, fmt)
           )}
         </div>
       )}
@@ -683,6 +684,7 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
   },
   ref
 ) {
+  const { fmt } = useCurrency();
   // ── DB upload / schema ─────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleRef = useRef<DbHandle | null>(null);
@@ -1565,8 +1567,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
               const { lo, hi } = patternMatches;
               const ranged = lo !== hi;
               const amtLabel = ranged
-                ? `${lo.toLocaleString()}–${hi.toLocaleString()}`
-                : lo.toLocaleString();
+                ? `${fmt(lo)}–${fmt(hi)}`
+                : fmt(lo);
               return (
                 <PatternResults
                   singles={patternMatches.matches}
@@ -1615,7 +1617,7 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
                         onApply={onApply}
                         onSlot={onSlot}
                         reelStripLoaded={reelStripLoaded}
-                        emptyText={`No award with Amount = ${sec.amount.toLocaleString()}${
+                        emptyText={`No award with Amount = ${fmt(sec.amount)}${
                           showFacade ? " in any facade." : " in this facade."
                         }`}
                       />
@@ -1629,8 +1631,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
           {view?.mode === "mapped" &&
             (view.groups.length === 0 ? (
               <p className="muted small">
-                No DB amount between {view.lo.toLocaleString()} and{" "}
-                {view.hi.toLocaleString()}
+                No DB amount between {fmt(view.lo)} and{" "}
+                {fmt(view.hi)}
                 {view.filtered ? " (matching the reelStop filter)" : ""} has a
                 pattern or combination at <strong>{betKey}</strong>.
               </p>
@@ -1639,7 +1641,7 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
                 <p className="muted small">
                   {view.groups.length} amount
                   {view.groups.length === 1 ? "" : "s"} in{" "}
-                  {view.lo.toLocaleString()}–{view.hi.toLocaleString()} map to a
+                  {fmt(view.lo)}–{fmt(view.hi)} map to a
                   pattern at <strong>{betKey}</strong>
                   {view.filtered ? " · filter applied" : ""}
                   {view.capped ? ` · first ${MAX_COMBOS} combos` : ""} (click to
@@ -1661,7 +1663,7 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
                             {isOpen ? "▾" : "▸"}
                           </span>
                           <span className="win-section-label">
-                            Amount {g.amount.toLocaleString()}
+                            Amount {fmt(g.amount)}
                           </span>
                           <span className="award-badge">
                             {count} pattern{count === 1 ? "" : "s"}
@@ -1673,7 +1675,7 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
                             combos={g.combos}
                             capped={g.capped}
                             ranged={false}
-                            amtLabel={g.amount.toLocaleString()}
+                            amtLabel={fmt(g.amount)}
                             showFacade={false}
                             onCreatePattern={onCreatePattern}
                             onCreatePatterns={onCreatePatterns}
@@ -1694,11 +1696,11 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
               <div className="minmax-values">
                 <span className="minmax-chip">
                   <span className="minmax-key">Min</span>
-                  {view.min.toLocaleString()}
+                  {fmt(view.min)}
                 </span>
                 <span className="minmax-chip">
                   <span className="minmax-key">Max</span>
-                  {view.max.toLocaleString()}
+                  {fmt(view.max)}
                 </span>
               </div>
               {view.filtered && <p className="muted small">filter applied</p>}
@@ -1714,22 +1716,22 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
               onSlot={onSlot}
               reelStripLoaded={reelStripLoaded}
               hideEmpty
-              emptyText={`No award with Amount = ${view.amount.toLocaleString()} found.`}
+              emptyText={`No award with Amount = ${fmt(view.amount)} found.`}
             />
           )}
 
           {view?.mode === "amountList" &&
             (view.amounts.length === 0 ? (
               <p className="muted small">
-                No amounts between {view.lo.toLocaleString()} and{" "}
-                {view.hi.toLocaleString()}.
+                No amounts between {fmt(view.lo)} and{" "}
+                {fmt(view.hi)}.
               </p>
             ) : (
               <>
                 <p className="muted small">
                   {view.amounts.length} amount
                   {view.amounts.length === 1 ? "" : "s"} in{" "}
-                  {view.lo.toLocaleString()}–{view.hi.toLocaleString()} (click to
+                  {fmt(view.lo)}–{fmt(view.hi)} (click to
                   open):
                 </p>
                 <div className="amount-list">
@@ -1744,7 +1746,7 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
                         void runSearch(String(a), pattern);
                       }}
                     >
-                      {a.toLocaleString()}
+                      {fmt(a)}
                     </button>
                   ))}
                 </div>
@@ -1773,7 +1775,7 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
                           {isOpen ? "▾" : "▸"}
                         </span>
                         <span className="win-section-label">
-                          Amount {g.amount.toLocaleString()}
+                          Amount {fmt(g.amount)}
                         </span>
                         <span className="award-badge">
                           {g.awards.length} award

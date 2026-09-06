@@ -1,6 +1,7 @@
 "use client";
 
 import type { MatchingPattern, Pattern } from "@/lib/types";
+import { useCurrency } from "@/lib/CurrencyContext";
 import MiniPattern from "./MiniPattern";
 
 interface GroupProps {
@@ -28,6 +29,7 @@ export default function InstanceList({
   badge,
   color,
 }: GroupProps) {
+  const { fmt } = useCurrency();
   return (
     <div className="group">
       <div className="group-head">
@@ -86,7 +88,7 @@ export default function InstanceList({
                     {e.ballQty}
                     {auto && <span className="badge badge-auto">auto</span>}
                   </td>
-                  <td className="payout">{e.payout.toLocaleString()}</td>
+                  <td className="payout">{fmt(e.payout)}</td>
                 </tr>
               );
             })}

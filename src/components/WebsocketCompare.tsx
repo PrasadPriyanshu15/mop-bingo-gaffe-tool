@@ -11,19 +11,20 @@ import {
 import { compare } from "@/lib/wscompare/compare";
 import { normalizeXml } from "@/lib/wscompare/normalizeXml";
 import type { CompareResult, RowDiff } from "@/lib/wscompare/types";
+import { useCurrency } from "@/lib/CurrencyContext";
 
 /** Max mismatched rows rendered per bet line before summarizing. */
 const ROW_CAP = 200;
 
-function rowText(r: RowDiff): string {
+function rowText(r: RowDiff, fmt: (credits: number) => string): string {
   const head = `#${r.id} · ${r.ballCall} balls`;
   if (r.status === "mismatch") {
-    return `${head} — payout: XML ${r.xml?.payout.toLocaleString()} → WS ${r.ws?.payout.toLocaleString()}`;
+    return `${head} — payout: XML ${fmt(r.xml?.payout ?? 0)} → WS ${fmt(r.ws?.payout ?? 0)}`;
   }
   if (r.status === "missing-in-websocket") {
-    return `${head} — in XML (${r.xml?.payout.toLocaleString()}) · missing in WebSocket`;
+    return `${head} — in XML (${fmt(r.xml?.payout ?? 0)}) · missing in WebSocket`;
   }
-  return `${head} — in WebSocket (${r.ws?.payout.toLocaleString()}) · missing in XML`;
+  return `${head} — in WebSocket (${fmt(r.ws?.payout ?? 0)}) · missing in XML`;
 }
 
 /**
@@ -34,6 +35,7 @@ function rowText(r: RowDiff): string {
  * proceeding with the XML is the normal flow.
  */
 export default function WebsocketCompare({ data }: { data: Paytable59 }) {
+  const { fmt } = useCurrency();
   const [open, setOpen] = useState(false);
   const [pasted, setPasted] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -222,7 +224,7 @@ export default function WebsocketCompare({ data }: { data: Paytable59 }) {
                             key={r.key}
                             className={"ws-row ws-row-" + r.status}
                           >
-                            {rowText(r)}
+                            {rowText(r, fmt)}
                           </div>
                         ))}
                         {badRows.length > ROW_CAP && (

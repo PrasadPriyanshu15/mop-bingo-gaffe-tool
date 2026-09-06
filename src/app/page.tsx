@@ -21,7 +21,9 @@ import ReelStripViewer, {
 import ResultJson from "@/components/ResultJson";
 import PaytableIssues from "@/components/PaytableIssues";
 import WebsocketCompare from "@/components/WebsocketCompare";
+import CreditToCurrency from "@/components/CreditToCurrency";
 import CollapsibleSection from "@/components/CollapsibleSection";
+import { useCurrency } from "@/lib/CurrencyContext";
 import { validatePaytable } from "@/lib/validatePaytable";
 import type { DbHandle, Facade } from "@/lib/db";
 import {
@@ -40,6 +42,7 @@ import { SAMPLE_GAFFE } from "@/lib/sample";
 import type { MatchingPattern, Pattern, Paytable59 } from "@/lib/types";
 
 export default function Home() {
+  const { fmt } = useCurrency();
   const [data, setData] = useState<Paytable59 | null>(null);
   const [loadedName, setLoadedName] = useState<string | null>(null);
   const [betKey, setBetKey] = useState<string | null>(null);
@@ -458,12 +461,12 @@ export default function Home() {
     () =>
       inGame.wins.map((w) => ({
         key: String(w.patternId),
-        label: `${w.patternName} · ${w.completionBall} balls (${w.payout.toLocaleString()})${
+        label: `${w.patternName} · ${w.completionBall} balls (${fmt(w.payout)})${
           w.selected ? "" : " · also won"
         }`,
         payout: w.payout,
       })),
-    [inGame]
+    [inGame, fmt]
   );
 
   // Per selected pattern: does the real completion ball make it pay a different
@@ -538,7 +541,7 @@ export default function Home() {
 
       <div className="sections">
         {/* ── Section 1 · Setup & Validation ─────────────────────────── */}
-        <CollapsibleSection title="1 · Setup & Validation">
+        <CollapsibleSection title="1 · Setup & Validation" defaultOpen={false}>
           <div className="section-row">
             <XmlUpload onLoaded={handleLoaded} loadedName={loadedName} />
 
@@ -553,11 +556,13 @@ export default function Home() {
             {ready && issues && <PaytableIssues issues={issues} />}
 
             {ready && data && <WebsocketCompare data={data} />}
+
+            <CreditToCurrency />
           </div>
         </CollapsibleSection>
 
         {/* ── Section 2 · Bingo Pattern ──────────────────────────────── */}
-        <CollapsibleSection title="2 · Bingo Pattern">
+        <CollapsibleSection title="2 · Bingo Pattern" defaultOpen={false}>
           <div className="section-grid pattern-row">
             {/* Select pattern */}
             {canPick && (
@@ -679,24 +684,26 @@ export default function Home() {
         </CollapsibleSection>
 
         {/* ── Section 3 · Result & Notepad (half / half) ─────────────── */}
-        <div className="section-grid grid-2">
-          {canPick ? (
-            <ResultJson json={gaffeJson} />
-          ) : (
-            <div className="panel empty">
-              <p className="muted">
-                The generated gaffe JSON appears once a bet level is picked.
-              </p>
-            </div>
-          )}
-          <Notepad />
-        </div>
+        <CollapsibleSection title="3 · Result &amp; Notepad" keepMounted defaultOpen={false}>
+          <div className="section-grid grid-2">
+            {canPick ? (
+              <ResultJson json={gaffeJson} />
+            ) : (
+              <div className="panel empty">
+                <p className="muted">
+                  The generated gaffe JSON appears once a bet level is picked.
+                </p>
+              </div>
+            )}
+            <Notepad />
+          </div>
+        </CollapsibleSection>
 
         {/* ── Section 4 · DB & ReelStrip Viewer ──────────────────────── */}
         {/* keepMounted: the DB viewer / reelStrip viewer own their loaded
             database and search results in local state — hide on collapse rather
             than unmount so that state survives until the tab is closed. */}
-        <CollapsibleSection title="4 · DB & ReelStrip Viewer" keepMounted>
+        <CollapsibleSection title="4 · DB & ReelStrip Viewer" keepMounted defaultOpen={false}>
           <div className="db-section-cols">
             {/* All DB inputs + results (upload, bet line, amount, filters). */}
             {canPick && (

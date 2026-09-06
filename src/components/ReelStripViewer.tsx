@@ -16,6 +16,7 @@ import {
   type ReelStripSet,
 } from "@/lib/parseReelStrips";
 import type { DbHandle, Facade, MatchedReelStop } from "@/lib/db";
+import { useCurrency } from "@/lib/CurrencyContext";
 
 /** Height of one symbol block, in px — used for the grid + payline math. */
 const CELL = 44;
@@ -83,6 +84,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     // `undefined` at an index means "leave that reel where it is".
     const scrollTargetRef = useRef<(number | undefined)[] | null>(null);
 
+    const { fmt } = useCurrency();
     const [open, setOpen] = useState(false);
     const [fileName, setFileName] = useState<string | null>(null);
     // All reelStrip sets parsed from the uploaded file (one file can hold
@@ -852,7 +854,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                                     className="reelstop-pid"
                                     title="Award amount"
                                   >
-                                    amt {m.amount.toLocaleString()}
+                                    amt {fmt(m.amount)}
                                   </span>
                                   <span
                                     className="reelstop-pid"

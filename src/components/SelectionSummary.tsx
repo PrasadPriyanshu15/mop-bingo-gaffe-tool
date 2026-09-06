@@ -1,6 +1,7 @@
 "use client";
 
 import type { PatternWin } from "@/lib/evaluate";
+import { useCurrency } from "@/lib/CurrencyContext";
 
 export interface SelectedRow {
   key: string;
@@ -52,6 +53,7 @@ export default function SelectionSummary({
   onRemove,
   onClear,
 }: Props) {
+  const { fmt } = useCurrency();
   const hasExtras = extras.length > 0;
   const hasCascades = cascades.length > 0;
 
@@ -89,7 +91,7 @@ export default function SelectionSummary({
                     {r.auto && <span className="badge badge-auto">auto</span>}
                   </td>
                   <td>{r.ballQty}</td>
-                  <td className="payout">{r.payout.toLocaleString()}</td>
+                  <td className="payout">{fmt(r.payout)}</td>
                   <td>
                     {!r.auto && (
                       <button
@@ -123,7 +125,7 @@ export default function SelectionSummary({
                         <span className="badge badge-extra">also won</span>
                       </td>
                       <td>{w.completionBall} balls</td>
-                      <td className="payout">{w.payout.toLocaleString()}</td>
+                      <td className="payout">{fmt(w.payout)}</td>
                       <td></td>
                     </tr>
                   ))}
@@ -148,23 +150,23 @@ export default function SelectionSummary({
                       </span>{" "}
                       {c.completionBall == null ? (
                         <>never completes in this draw order — pays 0 instead of{" "}
-                          {c.intended.toLocaleString()}.</>
+                          {fmt(c.intended)}.</>
                       ) : early ? (
                         <>completes at ball {c.completionBall} (earlier than the{" "}
                           {c.thresholdBallQty}-ball row you picked), so it also
-                          pays its lower tier(s): {c.inGame.toLocaleString()} vs{" "}
-                          {c.intended.toLocaleString()} selected{" "}
+                          pays its lower tier(s): {fmt(c.inGame)} vs{" "}
+                          {fmt(c.intended)} selected{" "}
                           <span className="cascade-delta up">
-                            (+{delta.toLocaleString()})
+                            (+{fmt(delta)})
                           </span>
                           .</>
                       ) : (
                         <>completes at ball {c.completionBall} (later than the{" "}
                           {c.thresholdBallQty}-ball row you picked), so it misses
-                          a tier: {c.inGame.toLocaleString()} vs{" "}
-                          {c.intended.toLocaleString()} selected{" "}
+                          a tier: {fmt(c.inGame)} vs{" "}
+                          {fmt(c.intended)} selected{" "}
                           <span className="cascade-delta down">
-                            ({delta.toLocaleString()})
+                            ({fmt(delta)})
                           </span>
                           .</>
                       )}
@@ -182,15 +184,13 @@ export default function SelectionSummary({
 
           <div className="total-row total-row-sub">
             <span>Selected subtotal ({rows.length})</span>
-            <span className="total-value">
-              {selectedSubtotal.toLocaleString()}
-            </span>
+            <span className="total-value">{fmt(selectedSubtotal)}</span>
           </div>
           <div className="total-row">
             <span>
               In-game total{hasExtras ? ` (+${extras.length} also won)` : ""}
             </span>
-            <span className="total-value">{inGameTotal.toLocaleString()}</span>
+            <span className="total-value">{fmt(inGameTotal)}</span>
           </div>
         </>
       )}
