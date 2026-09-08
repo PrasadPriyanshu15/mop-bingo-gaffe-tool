@@ -434,12 +434,16 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       }
 
       // Snapshot the grid window so the predicate is stable for this run.
-      const win = { rows, offset };
+      // `start` mirrors the grid's "RNG start (slot)": reel i reads the RNG
+      // value at values[start + i], so pointing the slot window at a feature
+      // segment (later in the stream) searches that feature's landings, not the
+      // base game's first values.
+      const win = { rows, offset, start: slotStart };
       const predicate = (values: number[]): boolean => {
         for (let i = 0; i < reels.length; i++) {
           const want = wanted[i];
           if (!want) continue;
-          const rng = values[i];
+          const rng = values[win.start + i];
           if (rng == null) return false;
           const reel = reels[i];
           const L = reel.symbols.length;
@@ -1010,6 +1014,15 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                     <span>
                       {symOpen ? "▾" : "▸"} Search by symbol — matches anywhere
                       in the visible grid ({rows} row{rows === 1 ? "" : "s"})
+                      {sets && sets.length > 1 && (
+                        <>
+                          {" "}
+                          · set:{" "}
+                          <strong>
+                            {sets[setIdx]?.name || `Set ${setIdx + 1}`}
+                          </strong>
+                        </>
+                      )}
                     </span>
                   </button>
 
@@ -1095,6 +1108,18 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                       </button>
                     )}
                   </div>
+
+                  <p className="muted small">
+                    Scans the active set (
+                    <strong>
+                      {sets && sets.length > 1
+                        ? sets[setIdx]?.name || `Set ${setIdx + 1}`
+                        : "loaded reels"}
+                    </strong>
+                    ) reading each reel from RNG start {slotStart}. To search a
+                    feature (e.g. mummy reels), pick that reelStrip set above and
+                    set “RNG start (slot)” to where its stops begin.
+                  </p>
 
                   {symProgress && (
                     <p className="muted small">
