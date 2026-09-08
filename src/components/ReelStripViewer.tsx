@@ -72,6 +72,56 @@ function rngToIndex(rng: number, reel: ReelStrip): number {
   return wrap(rng, reel.symbols.length);
 }
 
+/** Where in a triggering presentation's full RNG the free-game reel stops begin:
+ *  the base game + feature preamble runs ~30 values, so the free-game stops land
+ *  around the 30th/31st/32nd element. We start scanning here for the first run. */
+const FG_START_HINT = 29; // 0-based → the 30th element
+
+/** Sentinel for the free-game search's symbol picker: match every scatter-type
+ *  symbol (anything containing "Scat" — SCAT_FG, DScat, …) rather than one. */
+const FG_ANY_SCAT = "__ANY_SCAT__";
+
+/** How many symbol requirements the free-game search accepts in one spin. */
+const MAX_FG_SYMS = 5;
+
+/** A free-game search hit: the matched RNG plus the 1-based free-spin numbers
+ *  (within the candidate) whose visible grid satisfied the searched symbols. */
+interface FgMatch extends MatchedReelStop {
+  spins: number[];
+}
+
+/**
+ * Reconstruct the free-game spins from a candidate's full RNG value stream.
+ * The free-game reel stops are 1–2 digit values (0–99); the base game and any
+ * feature RNG precede them, so we scan from ~the 30th element for the first run
+ * of 5 consecutive small values (a spin), then take every small value from there
+ * on and chunk into groups of 5 (one spin = 5 reel stops). Long RNG numbers that
+ * sit between spins are dropped, matching how the paste-box extractor resolves
+ * free games. Returns [] when no such run exists (no free game was triggered).
+ */
+function freeSpinsFromRng(values: number[]): number[][] {
+  let start = -1;
+  for (let i = FG_START_HINT; i + 5 <= values.length; i++) {
+    let run = true;
+    for (let k = 0; k < 5; k++) {
+      const v = values[i + k];
+      if (!(v >= 0 && v <= 99)) {
+        run = false;
+        break;
+      }
+    }
+    if (run) {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0) return [];
+  const small = values.slice(start).filter((n) => n >= 0 && n <= 99);
+  const spins: number[][] = [];
+  for (let i = 0; i + 5 <= small.length; i += 5) spins.push(small.slice(i, i + 5));
+  return spins;
+}
+
 const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
   function ReelStripViewer(
     { onLoadedChange, onSearch, dbHandle, facades, onApply },
@@ -157,11 +207,106 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     // sees its id is stale.
     const symRunId = useRef(0);
 
+    // Free-game symbol search -------------------------------------------
+    // Scans the DB (a selected bet line) for RNG whose reconstructed free-game
+    // spins show a set of chosen symbols together in one spin's visible grid.
+    // Bet line (DB facadeId) this free-game search scopes to.
+    const [fgSearchFacadeId, setFgSearchFacadeId] = useState<number | null>(null);
+    // Two search shapes, user-selectable:
+    //  • "count": the original — one symbol that must appear ≥ N times in a spin.
+    //  • "set": up to MAX_FG_SYMS symbols that must all appear (each on its own
+    //    cell) in a single spin.
+    const [fgSearchMode, setFgSearchMode] = useState<"count" | "set">("set");
+    // Set mode: symbol requirements. Each entry is "" (unused), a symbol name,
+    // or FG_ANY_SCAT (any scatter). Repeating a symbol requires that many cells.
+    const [fgSearchSyms, setFgSearchSyms] = useState<string[]>([""]);
+    // Count mode: one symbol and the minimum number of it a single spin must show.
+    const [fgCountSym, setFgCountSym] = useState<string>("");
+    const [fgCountN, setFgCountN] = useState(2);
+    const [fgSearching, setFgSearching] = useState(false);
+    const [fgSearchError, setFgSearchError] = useState<string | null>(null);
+    const [fgSearchResults, setFgSearchResults] = useState<FgMatch[] | null>(
+      null
+    );
+    const [fgSearchCapped, setFgSearchCapped] = useState(false);
+    const [fgSearchProgress, setFgSearchProgress] = useState<{
+      done: number;
+      total: number;
+      found: number;
+    } | null>(null);
+    // Bumped on every new free-game search / cancel; a running scan bails when
+    // it sees its id is stale.
+    const fgSearchRunId = useRef(0);
+
     // Default the symbol-search bet line to the first facade once the DB opens.
     useEffect(() => {
       if (symFacadeId == null && facades.length > 0)
         setSymFacadeId(facades[0].facadeId);
     }, [facades, symFacadeId]);
+
+    // Same default for the free-game search's bet line.
+    useEffect(() => {
+      if (fgSearchFacadeId == null && facades.length > 0)
+        setFgSearchFacadeId(facades[0].facadeId);
+    }, [facades, fgSearchFacadeId]);
+
+    // Distinct symbols across the loaded free-game reels, for the search dropdown.
+    const fgSymOptions = useMemo(
+      () =>
+        Array.from(new Set((fgReels ?? []).flatMap((r) => r.symbols))).sort(
+          (a, b) => a.localeCompare(b)
+        ),
+      [fgReels]
+    );
+
+    // Whether the loaded free-game reels contain any scatter-type symbol, so the
+    // "Any scatter" search option (which aggregates SCAT_FG + DScat + …) shows.
+    const fgHasScatter = useMemo(
+      () => fgSymOptions.some((s) => isScatter(s)),
+      [fgSymOptions]
+    );
+
+    // When the free-game reel file loads (or changes), drop any picked symbols
+    // no longer in the file and seed one useful default when nothing valid is
+    // left ("Any scatter" if the strips carry a scatter, else the first symbol).
+    useEffect(() => {
+      if (fgSymOptions.length === 0) return;
+      setFgSearchSyms((prev) => {
+        const cleaned = prev.map((s) =>
+          s === FG_ANY_SCAT
+            ? fgHasScatter
+              ? s
+              : ""
+            : s && fgSymOptions.includes(s)
+            ? s
+            : ""
+        );
+        if (!cleaned.some((s) => s))
+          cleaned[0] = fgHasScatter ? FG_ANY_SCAT : fgSymOptions[0];
+        return cleaned.length ? cleaned : [""];
+      });
+      // Count mode's single symbol: keep a valid pick, else default like above.
+      setFgCountSym((prev) => {
+        if (prev === FG_ANY_SCAT) return fgHasScatter ? prev : fgSymOptions[0];
+        if (prev && fgSymOptions.includes(prev)) return prev;
+        return fgHasScatter ? FG_ANY_SCAT : fgSymOptions[0];
+      });
+    }, [fgSymOptions, fgHasScatter]);
+
+    // Slot editors for the up-to-5 symbol requirements.
+    function setFgSlot(i: number, value: string) {
+      setFgSearchSyms((prev) => prev.map((s, j) => (j === i ? value : s)));
+    }
+    function addFgSlot() {
+      setFgSearchSyms((prev) =>
+        prev.length < MAX_FG_SYMS ? [...prev, ""] : prev
+      );
+    }
+    function removeFgSlot(i: number) {
+      setFgSearchSyms((prev) =>
+        prev.length > 1 ? prev.filter((_, j) => j !== i) : prev
+      );
+    }
 
     // Distinct symbols per reel, for the dropdowns (sorted for scanning).
     const symOptions = useMemo(
@@ -350,6 +495,142 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       symRunId.current++;
       setSymSearching(false);
       setSymProgress(null);
+    }
+
+    // Free-game symbol search: scan the selected bet line's RNG candidates,
+    // reconstruct each one's free-game spins, and keep those where any single
+    // spin shows at least `fgSearchCount` of the chosen symbol in its visible
+    // grid (fgRows × fgOffset). Needs the free-game reel file loaded to resolve
+    // stop indices → symbols.
+    async function runFgSearch() {
+      if (!dbHandle) {
+        setFgSearchError("Open the outcomes DB (panel 5) to search.");
+        return;
+      }
+      if (!fgReels) {
+        setFgSearchError("Load the free-game reel file above first.");
+        return;
+      }
+      if (fgSearchFacadeId == null) {
+        setFgSearchError("Select a bet line to search.");
+        return;
+      }
+      const matcherFor = (s: string) =>
+        s === FG_ANY_SCAT
+          ? (x: string) => isScatter(x)
+          : (x: string) => x === s;
+
+      // Build the per-spin predicate for the active mode.
+      let spinMatches: (cells: string[]) => boolean;
+      if (fgSearchMode === "count") {
+        // Original mode: one symbol, ≥ N occurrences in a single spin's grid.
+        if (!fgCountSym) {
+          setFgSearchError("Choose a free-game symbol to search for.");
+          return;
+        }
+        const need = Math.max(1, Math.floor(fgCountN || 1));
+        const match = matcherFor(fgCountSym);
+        spinMatches = (cells) =>
+          cells.reduce((n, c) => n + (match(c) ? 1 : 0), 0) >= need;
+      } else {
+        // Set mode: exact counts. Each picked symbol must appear in a single
+        // spin exactly as many times as it was selected (DScat + SCAT_FG +
+        // SCAT_FG ⇒ exactly 1 DScat and exactly 2 SCAT_FG). Unselected symbols
+        // are unconstrained.
+        const wanted = fgSearchSyms.filter((s) => s);
+        if (wanted.length === 0) {
+          setFgSearchError(
+            "Choose at least one free-game symbol to search for."
+          );
+          return;
+        }
+        const reqCounts = new Map<string, number>();
+        for (const s of wanted) reqCounts.set(s, (reqCounts.get(s) ?? 0) + 1);
+        const reqs = Array.from(reqCounts.entries()).map(([sel, count]) => ({
+          match: matcherFor(sel),
+          count,
+        }));
+        spinMatches = (cells) =>
+          reqs.every(
+            ({ match, count }) =>
+              cells.reduce((n, c) => n + (match(c) ? 1 : 0), 0) === count
+          );
+      }
+
+      const reelsFg = fgReels;
+      // Snapshot the grid window so the predicate is stable for this run.
+      const win = { rows: fgRows, offset: fgOffset };
+
+      // Symbols visible in one spin's grid (all reels × the offset window).
+      const spinCells = (spin: number[]): string[] => {
+        const cells: string[] = [];
+        for (let j = 0; j < reelsFg.length; j++) {
+          const reel = reelsFg[j];
+          const L = reel.symbols.length;
+          const landing = spin[j] ?? 0;
+          for (let k = 0; k < win.rows; k++)
+            cells.push(reel.symbols[wrap(landing - win.offset + k, L)]);
+        }
+        return cells;
+      };
+
+      // 1-based numbers of the candidate's free spins that satisfy the search.
+      // Empty ⇒ candidate doesn't match.
+      const matchingSpins = (values: number[]): number[] => {
+        const hits: number[] = [];
+        freeSpinsFromRng(values).forEach((spin, si) => {
+          if (spinMatches(spinCells(spin))) hits.push(si + 1);
+        });
+        return hits;
+      };
+
+      const predicate = (values: number[]): boolean =>
+        matchingSpins(values).length > 0;
+
+      const myId = ++fgSearchRunId.current;
+      const stale = () => fgSearchRunId.current !== myId;
+      setFgSearching(true);
+      setFgSearchError(null);
+      setFgSearchResults(null);
+      setFgSearchCapped(false);
+      setFgSearchProgress({ done: 0, total: 0, found: 0 });
+      try {
+        const db = await import("@/lib/db");
+        const { results, capped } = await db.findReelStopsMatching(
+          dbHandle,
+          fgSearchFacadeId,
+          predicate,
+          {
+            maxResults: 100,
+            onProgress: (done, total, found) => {
+              if (!stale()) setFgSearchProgress({ done, total, found });
+            },
+            shouldStop: stale,
+          }
+        );
+        if (stale()) return;
+        // Tag each hit with the free-spin number(s) where the match was seen.
+        setFgSearchResults(
+          results.map((m) => ({ ...m, spins: matchingSpins(m.values) }))
+        );
+        setFgSearchCapped(capped);
+      } catch (e) {
+        if (!stale())
+          setFgSearchError(
+            e instanceof Error ? e.message : "Free-game search failed."
+          );
+      } finally {
+        if (!stale()) {
+          setFgSearching(false);
+          setFgSearchProgress(null);
+        }
+      }
+    }
+
+    function cancelFgSearch() {
+      fgSearchRunId.current++;
+      setFgSearching(false);
+      setFgSearchProgress(null);
     }
 
     async function copySym(text: string) {
@@ -1020,6 +1301,363 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                     </div>
 
                     {fgError && <p className="error">{fgError}</p>}
+
+                    <div className="sym-search fg-symbol-search">
+                      <div className="panel-title">
+                        Search free-game RNG by symbol (from DB)
+                      </div>
+                      {!fgReels ? (
+                        <p className="muted small">
+                          Load the free-game reel file above to search RNG by
+                          symbol.
+                        </p>
+                      ) : !dbHandle ? (
+                        <p className="muted small">
+                          Open the outcomes DB (panel 5) to scan for matching RNG.
+                        </p>
+                      ) : (
+                        <>
+                          <div className="db-field">
+                            <span className="db-label">Match</span>
+                            <div className="seg">
+                              <button
+                                type="button"
+                                className={
+                                  "seg-btn" +
+                                  (fgSearchMode === "count" ? " on" : "")
+                                }
+                                onClick={() => setFgSearchMode("count")}
+                              >
+                                Count of one symbol
+                              </button>
+                              <button
+                                type="button"
+                                className={
+                                  "seg-btn" +
+                                  (fgSearchMode === "set" ? " on" : "")
+                                }
+                                onClick={() => setFgSearchMode("set")}
+                              >
+                                Set of symbols
+                              </button>
+                            </div>
+                          </div>
+                          <p className="muted small">
+                            {fgSearchMode === "count" ? (
+                              <>
+                                Grab RNG from the selected bet line whose
+                                free-game spins show at least the chosen count of
+                                one symbol in any single spin.
+                              </>
+                            ) : (
+                              <>
+                                Grab RNG whose free-game spins contain the chosen
+                                symbols in one spin with those <em>exact</em>{" "}
+                                counts (e.g. DScat + SCAT_FG + SCAT_FG ⇒ exactly
+                                1 DScat and 2 SCAT_FG); other symbols are
+                                unconstrained.
+                              </>
+                            )}{" "}
+                            Visible grid: {fgRows} row{fgRows === 1 ? "" : "s"},
+                            offset {fgOffset}. Free spins are auto-detected from
+                            the RNG (first run of 5 one/two-digit values, ~30th
+                            element on).
+                          </p>
+                          <div className="sym-search-controls">
+                            <label className="db-field db-field-grow">
+                              <span className="db-label">Facade (bet line)</span>
+                              <select
+                                className="select"
+                                value={fgSearchFacadeId ?? ""}
+                                onChange={(e) =>
+                                  setFgSearchFacadeId(
+                                    e.target.value
+                                      ? Number(e.target.value)
+                                      : null
+                                  )
+                                }
+                              >
+                                {facades.map((f) => (
+                                  <option key={f.facadeId} value={f.facadeId}>
+                                    {f.facadeKey}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            {fgSearchMode === "count" && (
+                              <>
+                                <label className="db-field">
+                                  <span className="db-label">Symbol</span>
+                                  <select
+                                    className="select"
+                                    value={fgCountSym}
+                                    onChange={(e) =>
+                                      setFgCountSym(e.target.value)
+                                    }
+                                  >
+                                    {fgHasScatter && (
+                                      <option value={FG_ANY_SCAT}>
+                                        ★ Any scatter (contains “Scat”)
+                                      </option>
+                                    )}
+                                    {fgSymOptions.map((opt) => (
+                                      <option key={opt} value={opt}>
+                                        {opt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="db-field">
+                                  <span className="db-label">
+                                    Count (per spin ≥)
+                                  </span>
+                                  <input
+                                    className="select reelstrip-rows"
+                                    type="number"
+                                    min={1}
+                                    max={15}
+                                    value={fgCountN}
+                                    onChange={(e) =>
+                                      setFgCountN(
+                                        Math.max(
+                                          1,
+                                          Math.floor(Number(e.target.value) || 1)
+                                        )
+                                      )
+                                    }
+                                  />
+                                </label>
+                              </>
+                            )}
+                            {fgSearchMode === "set" && (
+                            <div className="db-field db-field-grow">
+                              <span className="db-label">
+                                Symbols in one spin (up to {MAX_FG_SYMS}, exact
+                                count — repeat for more)
+                              </span>
+                              <div className="fg-sym-slots">
+                                {fgSearchSyms.map((s, i) => (
+                                  <div key={i} className="fg-sym-slot">
+                                    <select
+                                      className="select"
+                                      value={s}
+                                      onChange={(e) =>
+                                        setFgSlot(i, e.target.value)
+                                      }
+                                    >
+                                      <option value="">(any / unused)</option>
+                                      {fgHasScatter && (
+                                        <option value={FG_ANY_SCAT}>
+                                          ★ Any scatter (contains “Scat”)
+                                        </option>
+                                      )}
+                                      {fgSymOptions.map((opt) => (
+                                        <option key={opt} value={opt}>
+                                          {opt}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {fgSearchSyms.length > 1 && (
+                                      <button
+                                        type="button"
+                                        className="btn btn-small fg-sym-del"
+                                        onClick={() => removeFgSlot(i)}
+                                        title="Remove this symbol"
+                                      >
+                                        ×
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                                {fgSearchSyms.length < MAX_FG_SYMS && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-small"
+                                    onClick={addFgSlot}
+                                    title="Add another symbol requirement"
+                                  >
+                                    + symbol
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            )}
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => void runFgSearch()}
+                              disabled={fgSearching}
+                              title="Scan this bet line's RNG for free games where one spin shows all the chosen symbols"
+                            >
+                              {fgSearching ? "Searching…" : "Search RNG"}
+                            </button>
+                            {fgSearching && (
+                              <button
+                                type="button"
+                                className="btn btn-small"
+                                onClick={cancelFgSearch}
+                              >
+                                Cancel
+                              </button>
+                            )}
+                            {fgSearchResults && (
+                              <button
+                                type="button"
+                                className="btn btn-small"
+                                onClick={() => {
+                                  setFgSearchResults(null);
+                                  setFgSearchError(null);
+                                }}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+
+                          {fgSearchProgress && (
+                            <p className="muted small">
+                              Scanned {fgSearchProgress.done} /{" "}
+                              {fgSearchProgress.total} awards ·{" "}
+                              {fgSearchProgress.found} found…
+                            </p>
+                          )}
+                          {fgSearchError && (
+                            <p className="error">{fgSearchError}</p>
+                          )}
+
+                          {fgSearchResults &&
+                            (fgSearchResults.length === 0 ? (
+                              <p className="muted small">
+                                {fgSearchMode === "count" ? (
+                                  <>
+                                    No RNG in this bet line has a free spin
+                                    showing {fgCountN}+{" "}
+                                    {fgCountSym === FG_ANY_SCAT
+                                      ? "scatters"
+                                      : fgCountSym}
+                                    .
+                                  </>
+                                ) : (
+                                  <>
+                                    No RNG in this bet line has a single free
+                                    spin with exactly:{" "}
+                                    {fgSearchSyms
+                                      .filter((s) => s)
+                                      .map((s) =>
+                                        s === FG_ANY_SCAT ? "any scatter" : s
+                                      )
+                                      .join(", ")}
+                                    .
+                                  </>
+                                )}
+                              </p>
+                            ) : (
+                              <>
+                                <p className="muted small">
+                                  {fgSearchResults.length} match
+                                  {fgSearchResults.length === 1 ? "" : "es"}
+                                  {fgSearchCapped ? " (first 100)" : ""}:
+                                </p>
+                                <div className="reelstop-list">
+                                  {fgSearchResults.map((m, i) => {
+                                    const text = `[${m.values.join(",")}]`;
+                                    const preview =
+                                      m.values.length > 8
+                                        ? `[${m.values
+                                            .slice(0, 8)
+                                            .join(",")}, …+${
+                                            m.values.length - 8
+                                          }]`
+                                        : text;
+                                    return (
+                                      <div
+                                        key={i}
+                                        className="reelstop sym-result"
+                                      >
+                                        <div className="sym-result-meta">
+                                          <span
+                                            className="reelstop-pid"
+                                            title="Award amount"
+                                          >
+                                            amt {fmt(m.amount)}
+                                          </span>
+                                          <span
+                                            className="reelstop-pid"
+                                            title="AwardId"
+                                          >
+                                            A#{m.awardId}
+                                          </span>
+                                          {m.presentationId != null && (
+                                            <span
+                                              className="reelstop-pid"
+                                              title="PresentationId"
+                                            >
+                                              P#{m.presentationId}
+                                            </span>
+                                          )}
+                                          {m.spins.length > 0 && (
+                                            <span
+                                              className="reelstop-pid fg-spin-badge"
+                                              title="Free spin(s) where all searched symbols appear"
+                                            >
+                                              {m.spins.length === 1
+                                                ? `spin ${m.spins[0]}`
+                                                : `spins ${m.spins.join(", ")}`}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span
+                                          className="reelstop-vals"
+                                          title={text}
+                                        >
+                                          {preview}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          className="reelstop-btn reelstop-apply"
+                                          onClick={() =>
+                                            applySym(m.values, text)
+                                          }
+                                          title="Use in gaffe result"
+                                        >
+                                          {symApplied === text ? "✓" : "+"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="reelstop-btn"
+                                          onClick={() => copySym(text)}
+                                          title="Copy reelStops"
+                                        >
+                                          {symCopied === text ? "✓" : "copy"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="reelstop-btn reelstop-slot"
+                                          onClick={() => {
+                                            const spins = freeSpinsFromRng(
+                                              m.values
+                                            );
+                                            setFgText(
+                                              spins
+                                                .map((s) => s.join(","))
+                                                .join(", ")
+                                            );
+                                            setFgPid(m.presentationId ?? null);
+                                            setFgAutoNote(null);
+                                          }}
+                                          title="Load this candidate's detected free spins into the extractor below"
+                                        >
+                                          load
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </>
+                            ))}
+                        </>
+                      )}
+                    </div>
 
                     <textarea
                       className="ws-textarea"

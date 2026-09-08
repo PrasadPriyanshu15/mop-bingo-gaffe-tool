@@ -1630,6 +1630,35 @@ body {
   text-transform: none;
   letter-spacing: 0;
 }
+/* Free-game RNG-by-symbol search, nested inside the free-game extractor. */
+.fg-symbol-search .panel-title {
+  margin-bottom: 2px;
+}
+/* The up-to-5 symbol requirement slots wrap under their label. */
+.fg-sym-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.fg-sym-slot {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.fg-sym-slot .select {
+  min-width: 150px;
+}
+.fg-sym-del {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+/* Which free spin(s) a search hit was seen in — accented like the scatter cue. */
+.reelstop-pid.fg-spin-badge {
+  background: rgba(74, 217, 145, 0.18);
+  color: var(--free);
+  font-weight: 700;
+}
 /* Symbol-search result rows carry a meta line (amount · award · presentation)
    above the RNG preview, so let the row wrap. */
 .sym-result {
