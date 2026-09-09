@@ -818,7 +818,7 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
     }
     const n = Number(t);
     if (!Number.isInteger(n) || n <= 0) return { filter: null, error: true };
-    return { filter: { min: null, max: n }, error: false };
+    return { filter: { min: n, max: n }, error: false };
   }
 
   function resetResults() {
@@ -1474,7 +1474,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
               {isType2 && (
                 <label className="db-field">
                   <span className="db-label">
-                    RNG count (HPP only, single or range, blank = no bound)
+                    RNG count (HPP only · single = exact length, range = in
+                    range, blank = no bound)
                   </span>
                   <input
                     className="select"

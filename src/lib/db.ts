@@ -46,7 +46,8 @@ export interface ReelStopCandidate {
 /**
  * Optional inclusive bound on a candidate's reconstructed RNG length (HPP /
  * Type 2 only). `min`/`max` are each nullable: a single "300" becomes
- * `{min:null,max:300}` (≤ 300), a range "100-300" becomes `{min:100,max:300}`.
+ * `{min:300,max:300}` (exactly 300), a range "100-300" becomes
+ * `{min:100,max:300}`.
  */
 export interface RngLenFilter {
   min: number | null;
