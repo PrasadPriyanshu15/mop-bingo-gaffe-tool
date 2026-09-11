@@ -705,33 +705,35 @@ export default function Home() {
             than unmount so that state survives until the tab is closed. */}
         <CollapsibleSection title="4 · DB & ReelStrip Viewer" keepMounted defaultOpen={false}>
           <div className="db-section-cols">
-            {/* All DB inputs + results (upload, bet line, amount, filters). */}
-            {canPick && (
-              <DbViewer
-                ref={dbSearchRef}
-                data={data}
-                betKey={betKey}
-                bingoCard={bingoCard}
-                totalPayout={totalPayout}
-                wins={wins}
-                onDbReady={(h, f) => {
-                  setDbHandle(h);
-                  setDbFacades(f);
-                }}
-                onApply={applyReelStops}
-                onCreatePattern={createPatternFromMatch}
-                onCreatePatterns={createPatternsFromMatch}
-                onSlot={(rs, pid) =>
-                  reelStripRef.current?.openWithReelStops(rs, pid)
-                }
-                reelStripLoaded={reelStripLoaded}
-                autoFindFacadeKey={autoFindReel?.facadeKey ?? null}
-                autoFindFacadeId={autoFindReel?.facadeId ?? null}
-                autoFindPattern={autoFindReel?.pattern ?? ""}
-                autoFindMaxRng={autoFindReel?.maxRng ?? ""}
-                autoFindToken={autoFindReel?.token ?? 0}
-              />
-            )}
+            {/* All DB inputs + results (upload, bet line, amount, filters). The
+                DB explorer is independent of the XML: it can open a .db and run
+                amount/reelStop searches on its own. Only the pattern-aware
+                actions ("see patterns" / "map DB amount → Patterns") stay
+                disabled until a paytable XML is loaded. */}
+            <DbViewer
+              ref={dbSearchRef}
+              data={data}
+              betKey={betKey}
+              bingoCard={bingoCard}
+              totalPayout={totalPayout}
+              wins={wins}
+              onDbReady={(h, f) => {
+                setDbHandle(h);
+                setDbFacades(f);
+              }}
+              onApply={applyReelStops}
+              onCreatePattern={createPatternFromMatch}
+              onCreatePatterns={createPatternsFromMatch}
+              onSlot={(rs, pid) =>
+                reelStripRef.current?.openWithReelStops(rs, pid)
+              }
+              reelStripLoaded={reelStripLoaded}
+              autoFindFacadeKey={autoFindReel?.facadeKey ?? null}
+              autoFindFacadeId={autoFindReel?.facadeId ?? null}
+              autoFindPattern={autoFindReel?.pattern ?? ""}
+              autoFindMaxRng={autoFindReel?.maxRng ?? ""}
+              autoFindToken={autoFindReel?.token ?? 0}
+            />
 
             {/* reelStrip viewer slot grid */}
             {dbHandle && (

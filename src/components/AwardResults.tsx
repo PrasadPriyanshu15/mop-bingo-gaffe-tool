@@ -150,6 +150,14 @@ export default function AwardResults({
                         </span>
                       )}
                       <span className="reelstop-vals">{text}</span>
+                      <span
+                        className="reelstop-count"
+                        title={`${rs.length} RNG value${
+                          rs.length === 1 ? "" : "s"
+                        }`}
+                      >
+                        {rs.length}
+                      </span>
                       <button
                         type="button"
                         className="reelstop-btn reelstop-apply"
