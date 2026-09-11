@@ -30,3 +30,7 @@ next-env.d.ts
 *.db
 *.sqlite
 *.sqlite3
+
+# reel-strip data (uploaded at runtime; never commit)
+*reelstrips.json
+src/main-reelstrips.json
