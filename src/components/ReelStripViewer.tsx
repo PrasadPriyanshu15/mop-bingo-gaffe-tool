@@ -1116,9 +1116,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                         ? sets[setIdx]?.name || `Set ${setIdx + 1}`
                         : "loaded reels"}
                     </strong>
-                    ) reading each reel from RNG start {slotStart}. To search a
-                    feature (e.g. mummy reels), pick that reelStrip set above and
-                    set “RNG start (slot)” to where its stops begin.
+                    ) reading each reel from RNG start {slotStart}.
                   </p>
 
                   {symProgress && (
@@ -1370,17 +1368,17 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                           <p className="muted small">
                             {fgSearchMode === "count" ? (
                               <>
-                                Grab RNG from the selected bet line whose
+                                {/* Grab RNG from the selected bet line whose
                                 free-game spins show at least the chosen count of
-                                one symbol in any single spin.
+                                one symbol in any single spin. */}
                               </>
                             ) : (
                               <>
-                                Grab RNG whose free-game spins contain the chosen
+                                {/* Grab RNG whose free-game spins contain the chosen
                                 symbols in one spin with those <em>exact</em>{" "}
                                 counts (e.g. DScat + SCAT_FG + SCAT_FG ⇒ exactly
                                 1 DScat and 2 SCAT_FG); other symbols are
-                                unconstrained.
+                                unconstrained. */}
                               </>
                             )}{" "}
                             Visible grid: {fgRows} row{fgRows === 1 ? "" : "s"},

@@ -124,7 +124,7 @@ export default function GaffeResult({
             </button>
           )}
           <button type="button" className="btn btn-small" onClick={copy}>
-            {copied ? "Copied!" : "Copy JSON"}
+            {copied ? "Copied!" : "Copy"}
           </button>
         </span>
       </div>

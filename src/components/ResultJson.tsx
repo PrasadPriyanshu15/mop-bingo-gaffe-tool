@@ -24,7 +24,7 @@ export default function ResultJson({ json }: Props) {
     <div className="panel result">
       <div className="result-field">
         <div className="result-key result-key-row">
-          <span>result (JSON)</span>
+          <span>result </span>
           <button type="button" className="btn btn-small" onClick={copy}>
             {copied ? "Copied!" : "Copy"}
           </button>
