@@ -9,7 +9,12 @@ import {
 } from "react";
 import type { DbHandle, DbType, Facade, RngLenFilter } from "@/lib/db";
 import type { MatchingPattern, Pattern, Paytable, Paytable59 } from "@/lib/types";
-import { parsePattern, patternIsActive } from "@/lib/reelstop";
+import {
+  parsePattern,
+  patternIsActive,
+  parseRange,
+  type AdvancedRule,
+} from "@/lib/reelstop";
 import { patternContains, cardBallCallBase } from "@/lib/patterns";
 import { buildBallCalls, patternDaubNumbers } from "@/lib/gaffe";
 import {
@@ -711,6 +716,51 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
   // "total" searches the amount field; "each" searches every selected win.
   const [mode, setMode] = useState<"total" | "each">("total");
 
+  // Advanced positional filter. The comma-per-position `pattern` above needs one
+  // leading comma per skipped position, which is impractical for a stop deep in
+  // the RNG (e.g. position 43). Each advanced row names a position — or position
+  // range — and a value — or value range — to search for there ("positions 20-30
+  // hold any value 500-600"). Rows are ANDed; blank rows are ignored.
+  const [advOpen, setAdvOpen] = useState(false);
+  const [advRules, setAdvRules] = useState<{ pos: string; val: string }[]>([
+    { pos: "", val: "" },
+  ]);
+
+  function setAdvRule(i: number, key: "pos" | "val", value: string) {
+    setAdvRules((prev) =>
+      prev.map((r, j) => (j === i ? { ...r, [key]: value } : r))
+    );
+  }
+  function addAdvRule() {
+    setAdvRules((prev) => [...prev, { pos: "", val: "" }]);
+  }
+  function removeAdvRule(i: number) {
+    setAdvRules((prev) =>
+      prev.length > 1 ? prev.filter((_, j) => j !== i) : [{ pos: "", val: "" }]
+    );
+  }
+
+  // Build AdvancedRule[] from the rows. A row is used only when both fields are
+  // filled; a filled-but-unparseable row flags an error so callers can refuse
+  // rather than silently ignore it. Fully-blank rows are skipped.
+  function parseAdvanced(): { rules: AdvancedRule[]; error: boolean } {
+    const rules: AdvancedRule[] = [];
+    let error = false;
+    for (const r of advRules) {
+      const posStr = r.pos.trim();
+      const valStr = r.val.trim();
+      if (posStr === "" && valStr === "") continue;
+      const pos = parseRange(posStr);
+      const val = parseRange(valStr);
+      if (!pos || !val) {
+        error = true;
+        continue;
+      }
+      rules.push({ pos, val });
+    }
+    return { rules, error };
+  }
+
   // ── Results / progress ─────────────────────────────────────────────────
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -842,10 +892,17 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
     const pat = parsePattern(patternStr);
     const active = patternIsActive(pat);
     const { filter: rngLen, error: maxRngErr } = parseMaxRng();
-    const filterActive = active || rngLen != null;
+    const { rules: advanced, error: advErr } = parseAdvanced();
+    const filterActive = active || rngLen != null || advanced.length > 0;
 
     if (maxRngErr) {
       setError("RNG count must be a positive number or range, e.g. 300 or 100-300.");
+      return;
+    }
+    if (advErr) {
+      setError(
+        "Advanced filter: position and value must each be a number or a range like 20-30."
+      );
       return;
     }
     if (amt.kind === "invalid") {
@@ -883,7 +940,14 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
           if (stale()) return;
           for (const award of found) {
             const reelStops = filterActive
-              ? await db.findMatchingReelStops(handleRef.current, award, pat, 2000, rngLen)
+              ? await db.findMatchingReelStops(
+                  handleRef.current,
+                  award,
+                  pat,
+                  2000,
+                  rngLen,
+                  advanced
+                )
               : await db.getReelStops(handleRef.current, award, 8);
             if (stale()) return;
             awards.push({ award, facadeKey: facade.facadeKey, reelStops });
@@ -926,7 +990,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
               award,
               pat,
               2000,
-              rngLen
+              rngLen,
+              advanced
             );
             if (stale()) return;
             if (rs.length > 0) {
@@ -954,11 +1019,18 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
     const pat = parsePattern(pattern);
     const active = patternIsActive(pat);
     const { filter: rngLen, error: rngErr } = parseMaxRng();
+    const { rules: advanced, error: advErr } = parseAdvanced();
     if (rngErr) {
       setError("RNG count must be a positive number or range, e.g. 300 or 100-300.");
       return;
     }
-    const constrained = active || rngLen != null;
+    if (advErr) {
+      setError(
+        "Advanced filter: position and value must each be a number or a range like 20-30."
+      );
+      return;
+    }
+    const constrained = active || rngLen != null || advanced.length > 0;
 
     const myId = ++runIdRef.current;
     const stale = () => runIdRef.current !== myId;
@@ -985,7 +1057,14 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
           if (stale()) return;
           for (const award of found) {
             const reelStops = constrained
-              ? await db.findMatchingReelStops(handleRef.current, award, pat, 2000, rngLen)
+              ? await db.findMatchingReelStops(
+                  handleRef.current,
+                  award,
+                  pat,
+                  2000,
+                  rngLen,
+                  advanced
+                )
               : await db.getReelStops(handleRef.current, award, 8);
             if (stale()) return;
             awards.push({ award, facadeKey: facade.facadeKey, reelStops });
@@ -1020,11 +1099,18 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
     const pat = parsePattern(pattern);
     const active = patternIsActive(pat);
     const { filter: rngLen, error: maxRngErr } = parseMaxRng();
+    const { rules: advanced, error: advErr } = parseAdvanced();
     if (maxRngErr) {
       setError("RNG count must be a positive number or range, e.g. 300 or 100-300.");
       return;
     }
-    const constrained = active || rngLen != null;
+    if (advErr) {
+      setError(
+        "Advanced filter: position and value must each be a number or a range like 20-30."
+      );
+      return;
+    }
+    const constrained = active || rngLen != null || advanced.length > 0;
 
     const myId = ++runIdRef.current;
     const stale = () => runIdRef.current !== myId;
@@ -1039,7 +1125,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
         handleRef.current,
         facade.facadeId,
         active ? pat : null,
-        rngLen
+        rngLen,
+        advanced
       );
       if (stale()) return;
       if (!res) {
@@ -1156,11 +1243,18 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
     const pat = parsePattern(pattern);
     const active = patternIsActive(pat);
     const { filter: rngLen, error: maxRngErr } = parseMaxRng();
+    const { rules: advanced, error: advErr } = parseAdvanced();
     if (maxRngErr) {
       setError("RNG count must be a positive number or range, e.g. 300 or 100-300.");
       return;
     }
-    const constrained = active || rngLen != null;
+    if (advErr) {
+      setError(
+        "Advanced filter: position and value must each be a number or a range like 20-30."
+      );
+      return;
+    }
+    const constrained = active || rngLen != null || advanced.length > 0;
 
     // A hand-typed amount/range in the Amount field narrows the mapped scan to
     // those bounds; a blank field — or the auto-filled tool total (not custom) —
@@ -1188,7 +1282,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
         handleRef.current,
         facade.facadeId,
         active ? pat : null,
-        rngLen
+        rngLen,
+        advanced
       );
       if (stale()) return;
       if (!mm) {
@@ -1208,7 +1303,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
         lo,
         hi,
         active ? pat : null,
-        rngLen
+        rngLen,
+        advanced
       );
       if (stale()) return;
       setProgress({ done: 0, total: amounts.length });
@@ -1470,6 +1566,74 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
                   onKeyDown={onEnter}
                 />
               </label>
+
+              <div className="db-field">
+                <button
+                  type="button"
+                  className={"btn btn-small" + (advOpen ? " on" : "")}
+                  onClick={() => setAdvOpen((v) => !v)}
+                  title="Search a value at an explicit position / position range — instead of counting commas"
+                >
+                  {advOpen ? "▾ Advanced filter" : "▸ Advanced filter"}
+                </button>
+              </div>
+
+              {advOpen && (
+                <div className="adv-filter">
+                  <p className="muted small">
+                    Search a value at an explicit position — no comma-counting.
+                    Position and value each take a single number (<code>43</code>
+                    ) or a range (<code>20-30</code>). Rows are combined with AND.
+                    Example: position <code>20-30</code>, value{" "}
+                    <code>500-600</code> keeps any RNG that has a value 500–600
+                    somewhere in positions 20–30.
+                  </p>
+                  {advRules.map((r, i) => (
+                    <div key={i} className="adv-rule">
+                      <label className="db-field">
+                        <span className="db-label">Position (0-based)</span>
+                        <input
+                          className="select db-search"
+                          type="text"
+                          value={r.pos}
+                          onChange={(e) => setAdvRule(i, "pos", e.target.value)}
+                          placeholder="e.g. 43 or 20-30"
+                          onKeyDown={onEnter}
+                        />
+                      </label>
+                      <label className="db-field">
+                        <span className="db-label">Value</span>
+                        <input
+                          className="select db-search"
+                          type="text"
+                          value={r.val}
+                          onChange={(e) => setAdvRule(i, "val", e.target.value)}
+                          placeholder="e.g. 500 or 500-600"
+                          onKeyDown={onEnter}
+                        />
+                      </label>
+                      {advRules.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn btn-small adv-rule-del"
+                          onClick={() => removeAdvRule(i)}
+                          title="Remove this rule"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={addAdvRule}
+                    title="Add another position/value rule (ANDed)"
+                  >
+                    + rule
+                  </button>
+                </div>
+              )}
 
               {isType2 && (
                 <label className="db-field">

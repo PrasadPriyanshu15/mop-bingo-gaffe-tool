@@ -1235,6 +1235,34 @@ body {
   accent-color: var(--accent);
 }
 
+/* advanced positional filter (position/value ranges) */
+.adv-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.adv-filter code {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.adv-rule {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.adv-rule-del {
+  padding: 6px 10px;
+}
+
 /* segmented total/each toggle */
 .seg {
   display: inline-flex;
@@ -1545,6 +1573,36 @@ body {
   text-overflow: ellipsis;
   padding: 0 2px;
 }
+.reelstrip-foot {
+  display: flex;
+}
+.reelstrip-foot-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+  padding: 0 2px;
+}
+.reel-foot-tag {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.reel-foot-scat {
+  background: var(--accent);
+  color: #fff;
+}
+.reel-foot-empty {
+  background: var(--border);
+  color: var(--text);
+}
 .reel-strips {
   position: relative;
   display: flex;
@@ -1564,6 +1622,7 @@ body {
   border-left: 1px solid var(--border);
 }
 .reel-cell {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1575,6 +1634,23 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Occurrence number for a SCAT / Empty_credit symbol, pinned to the cell's
+   top-right so it never shifts the centered symbol name. */
+.reel-seq {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  min-width: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  line-height: 13px;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
 }
 .reel-payline {
   position: absolute;

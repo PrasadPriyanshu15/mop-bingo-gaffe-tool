@@ -7,7 +7,7 @@
 
 import * as SQLite from "wa-sqlite";
 import { Base } from "wa-sqlite/src/VFS.js";
-import { matchesPattern } from "./reelstop";
+import { matchesPattern, matchesAdvanced, type AdvancedRule } from "./reelstop";
 
 const {
   SQLITE_OK,
@@ -350,10 +350,13 @@ export async function findMinMaxAmount(
   h: DbHandle,
   facadeId: number,
   pattern: (number | null)[] | null,
-  rngLen: RngLenFilter | null = null
+  rngLen: RngLenFilter | null = null,
+  advanced: AdvancedRule[] = []
 ): Promise<{ min: number; max: number } | null> {
   const active =
-    (pattern != null && pattern.some((v) => v != null)) || rngLen != null;
+    (pattern != null && pattern.some((v) => v != null)) ||
+    rngLen != null ||
+    advanced.length > 0;
   if (!active) {
     const { rows } = await h.sqlite3.execWithParams(
       h.db,
@@ -368,7 +371,9 @@ export async function findMinMaxAmount(
   const amounts = await listAmounts(h, facadeId, null, null);
   let min: number | null = null;
   for (let i = 0; i < amounts.length; i++) {
-    if (await awardMatchesPattern(h, facadeId, amounts[i], pattern, rngLen)) {
+    if (
+      await awardMatchesPattern(h, facadeId, amounts[i], pattern, rngLen, advanced)
+    ) {
       min = amounts[i];
       break;
     }
@@ -376,7 +381,9 @@ export async function findMinMaxAmount(
   if (min == null) return null; // nothing matched at all
   let max = min;
   for (let i = amounts.length - 1; i >= 0 && amounts[i] > min; i--) {
-    if (await awardMatchesPattern(h, facadeId, amounts[i], pattern, rngLen)) {
+    if (
+      await awardMatchesPattern(h, facadeId, amounts[i], pattern, rngLen, advanced)
+    ) {
       max = amounts[i];
       break;
     }
@@ -393,11 +400,19 @@ async function awardMatchesPattern(
   facadeId: number,
   amount: number,
   pattern: (number | null)[] | null,
-  rngLen: RngLenFilter | null = null
+  rngLen: RngLenFilter | null = null,
+  advanced: AdvancedRule[] = []
 ): Promise<boolean> {
   const awards = await findAwardsByAmount(h, facadeId, amount);
   for (const award of awards) {
-    const rs = await findMatchingReelStops(h, award, pattern ?? [], 2000, rngLen);
+    const rs = await findMatchingReelStops(
+      h,
+      award,
+      pattern ?? [],
+      2000,
+      rngLen,
+      advanced
+    );
     if (rs.length > 0) return true;
   }
   return false;
@@ -414,15 +429,18 @@ export async function listAmountsMatchingPattern(
   lo: number | null,
   hi: number | null,
   pattern: (number | null)[] | null,
-  rngLen: RngLenFilter | null = null
+  rngLen: RngLenFilter | null = null,
+  advanced: AdvancedRule[] = []
 ): Promise<number[]> {
   const amounts = await listAmounts(h, facadeId, lo, hi);
   const active =
-    (pattern != null && pattern.some((v) => v != null)) || rngLen != null;
+    (pattern != null && pattern.some((v) => v != null)) ||
+    rngLen != null ||
+    advanced.length > 0;
   if (!active) return amounts;
   const out: number[] = [];
   for (const amount of amounts) {
-    if (await awardMatchesPattern(h, facadeId, amount, pattern, rngLen)) {
+    if (await awardMatchesPattern(h, facadeId, amount, pattern, rngLen, advanced)) {
       out.push(amount);
     }
   }
@@ -619,10 +637,11 @@ export async function findMatchingReelStops(
   award: Award,
   pattern: (number | null)[],
   scanCap = 2000,
-  rngLen: RngLenFilter | null = null
+  rngLen: RngLenFilter | null = null,
+  advanced: AdvancedRule[] = []
 ): Promise<ReelStopCandidate[]> {
   if (h.type === "type2")
-    return getSegmentReelStops(h, award, scanCap, pattern, rngLen);
+    return getSegmentReelStops(h, award, scanCap, pattern, rngLen, advanced);
   const hi = award.sequenceStart + award.totalCount - 1;
   const { rows } = await h.sqlite3.execWithParams(
     h.db,
@@ -633,7 +652,9 @@ export async function findMatchingReelStops(
   for (const r of rows as any[][]) {
     const values = parseRng(r[0]);
     if (!rngLenOk(values.length, rngLen)) continue;
-    if (matchesPattern(values, pattern)) matches.push({ values });
+    if (!matchesPattern(values, pattern)) continue;
+    if (advanced.length && !matchesAdvanced(values, advanced)) continue;
+    matches.push({ values });
   }
   return matches;
 }
@@ -653,7 +674,8 @@ async function getSegmentReelStops(
   award: Award,
   maxPresentations: number,
   pattern: (number | null)[] | null,
-  rngLen: RngLenFilter | null = null
+  rngLen: RngLenFilter | null = null,
+  advanced: AdvancedRule[] = []
 ): Promise<ReelStopCandidate[]> {
   const start = award.sequenceStart;
   const rangeHi = start + award.totalCount - 1;
@@ -685,6 +707,7 @@ async function getSegmentReelStops(
     const values = parseRng(byPid.get(pid)!.join(","));
     if (!rngLenOk(values.length, rngLen)) continue;
     if (pattern && !matchesPattern(values, pattern)) continue;
+    if (advanced.length && !matchesAdvanced(values, advanced)) continue;
     out.push({ values, presentationId: pid });
   }
   return out;

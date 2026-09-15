@@ -53,6 +53,48 @@ const wrap = (n: number, len: number) => ((n % len) + len) % len;
  *  matching Scat / SCAT / SCATTER. */
 const isScatter = (s: string) => s.toUpperCase().includes("SCAT");
 
+/** A reel symbol counts as an empty-credit symbol when its name (letters only,
+ *  case-insensitive) contains "EMPTYCREDIT" — so "Empty_credit", "EmptyCredit",
+ *  "EMPTY_CREDIT" all match. */
+const isEmptyCredit = (s: string) =>
+  s.toUpperCase().replace(/[^A-Z]/g, "").includes("EMPTYCREDIT");
+
+/**
+ * Occurrence numbering for SCAT / Empty_credit symbols that runs *continuously
+ * across all reels in order*: SCATs are numbered 1,2,3,… over reel 1, then
+ * continue 4,5,… into reel 2, and so on; Empty_credit symbols carry their own
+ * independent running counter. Cells that are neither symbol get null. Returns
+ * one label array per reel (aligned to each reel's symbols) plus each reel's own
+ * SCAT / Empty_credit totals for the footer.
+ */
+function sequenceLabels(reels: ReelStrip[]): {
+  labels: (string | null)[][];
+  totals: { scat: number; empty: number }[];
+} {
+  let scat = 0;
+  let empty = 0;
+  const labels: (string | null)[][] = [];
+  const totals: { scat: number; empty: number }[] = [];
+  for (const reel of reels) {
+    let rScat = 0;
+    let rEmpty = 0;
+    const row = reel.symbols.map((s) => {
+      if (isScatter(s)) {
+        rScat++;
+        return String(++scat);
+      }
+      if (isEmptyCredit(s)) {
+        rEmpty++;
+        return String(++empty);
+      }
+      return null;
+    });
+    labels.push(row);
+    totals.push({ scat: rScat, empty: rEmpty });
+  }
+  return { labels, totals };
+}
+
 /**
  * Map an RNG value to the landing stop index for a reel.
  * - HPP (weighted .json): the RNG is 1-based (1..totalWeight) and wrapped into
@@ -314,6 +356,16 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         (reels ?? []).map((r) =>
           Array.from(new Set(r.symbols)).sort((a, b) => a.localeCompare(b))
         ),
+      [reels]
+    );
+
+    // Occurrence number for each SCAT / Empty_credit cell, numbered continuously
+    // across all reels (reel 1: 1..n, reel 2 continues n+1..), shown as a small
+    // badge beside the symbol so a landing scatter/empty-credit is identifiable
+    // ("the 3rd SCAT"). Also yields each reel's own SCAT/Empty_credit totals for
+    // the footer. Recomputed only when reels change.
+    const { labels: seqLabels, totals: seqTotals } = useMemo(
+      () => sequenceLabels(reels ?? []),
       [reels]
     );
 
@@ -984,6 +1036,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                             r.symbols.map((s, j) => {
                               const landed =
                                 copy === 1 && j === slotLandings[i];
+                              const seq = seqLabels[i]?.[j] ?? null;
                               return (
                                 <div
                                   key={copy * r.symbols.length + j}
@@ -991,9 +1044,25 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                                     "reel-cell" + (landed ? " landed" : "")
                                   }
                                   style={{ height: CELL }}
-                                  title={s}
+                                  title={
+                                    seq
+                                      ? `${s} — ${
+                                          isScatter(s) ? "SCAT" : "Empty_credit"
+                                        } #${seq} overall`
+                                      : s
+                                  }
                                 >
                                   {s}
+                                  {seq && (
+                                    <span
+                                      className="reel-seq"
+                                      title={`${
+                                        isScatter(s) ? "SCAT" : "Empty_credit"
+                                      } #${seq} (numbered across all reels)`}
+                                    >
+                                      {seq}
+                                    </span>
+                                  )}
                                 </div>
                               );
                             })
@@ -1001,6 +1070,38 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                         </div>
                       ))}
                     </div>
+
+                    {seqTotals.some((t) => t.scat > 0 || t.empty > 0) && (
+                      <div className="reelstrip-foot">
+                        {reels.map((_, i) => {
+                          const t = seqTotals[i] ?? { scat: 0, empty: 0 };
+                          return (
+                            <div key={i} className="reelstrip-foot-cell">
+                              {t.scat > 0 && (
+                                <span
+                                  className="reel-foot-tag reel-foot-scat"
+                                  title={`${t.scat} SCAT symbol${
+                                    t.scat === 1 ? "" : "s"
+                                  } in this reel`}
+                                >
+                                  SCAT {t.scat}
+                                </span>
+                              )}
+                              {t.empty > 0 && (
+                                <span
+                                  className="reel-foot-tag reel-foot-empty"
+                                  title={`${t.empty} Empty_credit symbol${
+                                    t.empty === 1 ? "" : "s"
+                                  } in this reel`}
+                                >
+                                  Empty {t.empty}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
 

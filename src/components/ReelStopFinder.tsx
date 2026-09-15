@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { DbHandle, DbType, Facade, RngLenFilter } from "@/lib/db";
-import { parsePattern, patternIsActive } from "@/lib/reelstop";
+import {
+  parsePattern,
+  patternIsActive,
+  parseRange,
+  type AdvancedRule,
+} from "@/lib/reelstop";
 import AwardResults, { type AwardResult } from "./AwardResults";
 
 export interface Win {
@@ -103,6 +108,50 @@ export default function ReelStopFinder({
   // single "300" keeps candidates with <= 300 RNG values, a range "100-300" keeps
   // 100..300. Mirrors the DB amount search field of the same name.
   const [maxRng, setMaxRng] = useState("");
+
+  // Advanced positional filter. Instead of the comma-per-position pattern above
+  // (impractical for a stop deep in the RNG), each row names a position — or
+  // position range — and a value — or value range — to search for there, e.g.
+  // "positions 20-30 hold any value 500-600". Rows are ANDed. Blank rows ignored.
+  const [advOpen, setAdvOpen] = useState(false);
+  const [advRules, setAdvRules] = useState<{ pos: string; val: string }[]>([
+    { pos: "", val: "" },
+  ]);
+
+  function setAdvRule(i: number, key: "pos" | "val", value: string) {
+    setAdvRules((prev) =>
+      prev.map((r, j) => (j === i ? { ...r, [key]: value } : r))
+    );
+  }
+  function addAdvRule() {
+    setAdvRules((prev) => [...prev, { pos: "", val: "" }]);
+  }
+  function removeAdvRule(i: number) {
+    setAdvRules((prev) =>
+      prev.length > 1 ? prev.filter((_, j) => j !== i) : [{ pos: "", val: "" }]
+    );
+  }
+
+  // Turn the advanced rows into AdvancedRule[]. A row is used only when both
+  // fields are filled; a filled row that won't parse flags an error so find()
+  // can refuse rather than silently ignore it. Fully-blank rows are skipped.
+  function parseAdvanced(): { rules: AdvancedRule[]; error: boolean } {
+    const rules: AdvancedRule[] = [];
+    let error = false;
+    for (const r of advRules) {
+      const posStr = r.pos.trim();
+      const valStr = r.val.trim();
+      if (posStr === "" && valStr === "") continue;
+      const pos = parseRange(posStr);
+      const val = parseRange(valStr);
+      if (!pos || !val) {
+        error = true;
+        continue;
+      }
+      rules.push({ pos, val });
+    }
+    return { rules, error };
+  }
 
   const multiWin = wins.length > 1;
   const eachMode = mode === "each" && multiWin;
@@ -238,7 +287,17 @@ export default function ReelStopFinder({
       );
       return;
     }
-    const constrained = active || rngLen != null;
+    // An auto-find carries no advanced rules; only a manual find honors them.
+    const { rules: advanced, error: advErr } = auto
+      ? { rules: [] as AdvancedRule[], error: false }
+      : parseAdvanced();
+    if (advErr) {
+      setError(
+        "Advanced filter: position and value must each be a number or a range like 20-30."
+      );
+      return;
+    }
+    const constrained = active || rngLen != null || advanced.length > 0;
 
     setSearching(true);
     setError(null);
@@ -280,7 +339,8 @@ export default function ReelStopFinder({
                   award,
                   pat,
                   2000,
-                  rngLen
+                  rngLen,
+                  advanced
                 )
               : await db.getReelStops(handleRef.current, award, 8);
             awards.push({ award, facadeKey: facade.facadeKey, reelStops });
@@ -425,6 +485,15 @@ export default function ReelStopFinder({
 
             <button
               type="button"
+              className={"btn btn-small" + (advOpen ? " on" : "")}
+              onClick={() => setAdvOpen((v) => !v)}
+              title="Search a value at an explicit position / position range — instead of counting commas"
+            >
+              {advOpen ? "▾ Advanced" : "▸ Advanced"}
+            </button>
+
+            <button
+              type="button"
               className="btn"
               onClick={() => find()}
               disabled={searching}
@@ -432,6 +501,61 @@ export default function ReelStopFinder({
               {searching ? "Searching…" : "Find reelStops"}
             </button>
           </div>
+
+          {advOpen && (
+            <div className="adv-filter">
+              <p className="muted small">
+                Search a value at an explicit position — no comma-counting.
+                Position and value each take a single number (
+                <code>43</code>) or a range (<code>20-30</code>). Rows are
+                combined with AND. Example: position <code>20-30</code>, value{" "}
+                <code>500-600</code> keeps any RNG that has a value 500–600
+                somewhere in positions 20–30.
+              </p>
+              {advRules.map((r, i) => (
+                <div key={i} className="adv-rule">
+                  <label className="db-field">
+                    <span className="db-label">Position (0-based)</span>
+                    <input
+                      className="select db-search"
+                      type="text"
+                      value={r.pos}
+                      onChange={(e) => setAdvRule(i, "pos", e.target.value)}
+                      placeholder="e.g. 43 or 20-30"
+                    />
+                  </label>
+                  <label className="db-field">
+                    <span className="db-label">Value</span>
+                    <input
+                      className="select db-search"
+                      type="text"
+                      value={r.val}
+                      onChange={(e) => setAdvRule(i, "val", e.target.value)}
+                      placeholder="e.g. 500 or 500-600"
+                    />
+                  </label>
+                  {advRules.length > 1 && (
+                    <button
+                      type="button"
+                      className="btn btn-small adv-rule-del"
+                      onClick={() => removeAdvRule(i)}
+                      title="Remove this rule"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={addAdvRule}
+                title="Add another position/value rule (ANDed)"
+              >
+                + rule
+              </button>
+            </div>
+          )}
 
           <label className="db-check">
             <input
