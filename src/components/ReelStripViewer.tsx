@@ -24,6 +24,12 @@ const CELL = 44;
 const MIN_COL = 58;
 /** How many first reelStop positions physically land on the slot grid. */
 const SLOT_REELS = 5;
+/** Threshold above which an RNG value is a "big value" — a SCAT / Empty_credit
+ *  reveal that gets numbered 1st, 2nd, 3rd… The base-game preamble (~28-30
+ *  one-to-three-digit reel stops) and the single-digit values sitting between
+ *  reveals fall below this, so they are skipped automatically. "Above 4 digits"
+ *  → any value with 5+ digits (|v| >= 10000). */
+const BIG_VALUE_MIN = 10000;
 
 export interface ReelStripHandle {
   /** Expand the viewer and land the first reels on these reelStop indices.
@@ -202,6 +208,15 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     // the real RNG rather than the cumulative-mapped stop index.
     const [rawValues, setRawValues] = useState<(number | undefined)[]>([]);
     const [slotSeq, setSlotSeq] = useState(0);
+    // Which value in the RNG readout is flashing (a big-value index), and its
+    // auto-clear timer. Set when a footer SCAT/Empty_credit count is clicked.
+    const [flashIdx, setFlashIdx] = useState<number | null>(null);
+    // Transient note shown by the readout when a click can't be satisfied
+    // (no RNG loaded, or the Nth big value doesn't exist).
+    const [flashMsg, setFlashMsg] = useState<string | null>(null);
+    const flashTimer = useRef<number | undefined>(undefined);
+    // One span per readout value, so a flashed value can be scrolled into view.
+    const valSpanRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
     // Free-game workflow -------------------------------------------------
     const fgInputRef = useRef<HTMLInputElement>(null);
@@ -895,6 +910,62 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         : positions
     ).join(",");
 
+    // The RNG stream shown in the readout: the loaded candidate's real RNG value
+    // per position when available (so the big SCAT/Empty_credit reveals are
+    // visible), else the manually scrolled stop index.
+    const rngStream = useMemo(
+      () => positions.map((p, i) => rawValues[i] ?? p),
+      [positions, rawValues]
+    );
+    // Stream indices of the "big" values — the reveals numbered 1st, 2nd, 3rd…
+    // in order from the start of the RNG. Everything below BIG_VALUE_MIN (the
+    // preamble and single-digit fillers) is skipped.
+    const bigIndices = useMemo(() => {
+      const out: number[] = [];
+      rngStream.forEach((v, i) => {
+        if (typeof v === "number" && Math.abs(v) >= BIG_VALUE_MIN) out.push(i);
+      });
+      return out;
+    }, [rngStream]);
+
+    // Flash the Nth big value (1-based) in the readout for 3s and scroll it into
+    // view. `n` is a footer SCAT / Empty_credit count, e.g. "20 Empty_credit" →
+    // the 20th big value from the start of the RNG.
+    function flashBigValue(n: number) {
+      if (flashTimer.current) window.clearTimeout(flashTimer.current);
+      const idx = bigIndices[n - 1];
+      if (idx == null) {
+        // Nothing to highlight — tell the user why (no RNG loaded, or the
+        // strip has more of this symbol than the RNG has big values).
+        setFlashIdx(null);
+        setFlashMsg(
+          bigIndices.length === 0
+            ? "No big RNG values in the readout — load a result (a search “slot” button) first."
+            : `No #${n} big value — this RNG has only ${bigIndices.length}.`
+        );
+        flashTimer.current = window.setTimeout(() => setFlashMsg(null), 3000);
+        return;
+      }
+      setFlashMsg(null);
+      setFlashIdx(idx);
+      requestAnimationFrame(() =>
+        valSpanRefs.current[idx]?.scrollIntoView({
+          behavior: "smooth",
+          inline: "center",
+          block: "nearest",
+        })
+      );
+      flashTimer.current = window.setTimeout(() => setFlashIdx(null), 3000);
+    }
+
+    // Clear the flash timer if the component unmounts mid-flash.
+    useEffect(
+      () => () => {
+        if (flashTimer.current) window.clearTimeout(flashTimer.current);
+      },
+      []
+    );
+
     return (
       <div className="panel" ref={panelRef}>
         <button
@@ -1037,18 +1108,32 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                               const landed =
                                 copy === 1 && j === slotLandings[i];
                               const seq = seqLabels[i]?.[j] ?? null;
+                              // A numbered SCAT / Empty_credit cell is clickable:
+                              // it flashes the same-numbered big value in the RNG
+                              // readout (the #20 Empty_credit → the 20th big value).
+                              const seqNum = seq ? Number(seq) : null;
                               return (
                                 <div
                                   key={copy * r.symbols.length + j}
                                   className={
-                                    "reel-cell" + (landed ? " landed" : "")
+                                    "reel-cell" +
+                                    (landed ? " landed" : "") +
+                                    (seqNum != null ? " reel-cell-seq" : "")
                                   }
                                   style={{ height: CELL }}
+                                  role={seqNum != null ? "button" : undefined}
+                                  onClick={
+                                    seqNum != null
+                                      ? () => flashBigValue(seqNum)
+                                      : undefined
+                                  }
                                   title={
-                                    seq
+                                    seqNum != null
                                       ? `${s} — ${
                                           isScatter(s) ? "SCAT" : "Empty_credit"
-                                        } #${seq} overall`
+                                        } #${seq} — click to flash the ${seq}th big RNG value (of ${
+                                          bigIndices.length
+                                        })`
                                       : s
                                   }
                                 >
@@ -1078,24 +1163,32 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                           return (
                             <div key={i} className="reelstrip-foot-cell">
                               {t.scat > 0 && (
-                                <span
+                                <button
+                                  type="button"
                                   className="reel-foot-tag reel-foot-scat"
+                                  onClick={() => flashBigValue(t.scat)}
                                   title={`${t.scat} SCAT symbol${
                                     t.scat === 1 ? "" : "s"
-                                  } in this reel`}
+                                  } in this reel — click to flash the ${
+                                    t.scat
+                                  }th big RNG value (of ${bigIndices.length})`}
                                 >
                                   SCAT {t.scat}
-                                </span>
+                                </button>
                               )}
                               {t.empty > 0 && (
-                                <span
+                                <button
+                                  type="button"
                                   className="reel-foot-tag reel-foot-empty"
+                                  onClick={() => flashBigValue(t.empty)}
                                   title={`${t.empty} Empty_credit symbol${
                                     t.empty === 1 ? "" : "s"
-                                  } in this reel`}
+                                  } in this reel — click to flash the ${
+                                    t.empty
+                                  }th big RNG value (of ${bigIndices.length})`}
                                 >
                                   Empty {t.empty}
-                                </span>
+                                </button>
                               )}
                             </div>
                           );
@@ -1323,9 +1416,35 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                     <span className="db-label">
                       reelStop @ offset (all reels)
                     </span>
-                    <code className="result-val">
-                      [{positions.join(", ")}]
+                    <code className="result-val rng-readout">
+                      [
+                      {rngStream.map((v, i) => (
+                        <span
+                          key={i}
+                          ref={(el) => {
+                            valSpanRefs.current[i] = el;
+                          }}
+                          className={
+                            "rng-val" + (flashIdx === i ? " flash" : "")
+                          }
+                        >
+                          {v}
+                          {i < rngStream.length - 1 ? ", " : ""}
+                        </span>
+                      ))}
+                      ]
                     </code>
+                    <span className="muted small">
+                      {bigIndices.length} big RNG value
+                      {bigIndices.length === 1 ? "" : "s"} (&gt; 4 digits) — click
+                      a SCAT / Empty count below to flash the matching one
+                      {flashMsg && (
+                        <>
+                          {" · "}
+                          <strong className="rng-flash-msg">{flashMsg}</strong>
+                        </>
+                      )}
+                    </span>
                   </div>
                   <div className="reelstrip-actions">
                     <button

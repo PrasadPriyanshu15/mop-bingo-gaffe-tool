@@ -1603,6 +1603,35 @@ body {
   background: var(--border);
   color: var(--text);
 }
+/* Footer counts double as buttons that flash the Nth big RNG value. */
+button.reel-foot-tag {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+button.reel-foot-tag:not(:disabled):hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+button.reel-foot-tag:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+/* Individual RNG readout values; the flashed one lights up for 3s. */
+.rng-val {
+  border-radius: 4px;
+  padding: 0 1px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.rng-val.flash {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.rng-flash-msg {
+  color: var(--accent);
+}
 .reel-strips {
   position: relative;
   display: flex;
@@ -1665,6 +1694,17 @@ body {
 .reel-cell.landed {
   color: var(--marked);
   font-weight: 700;
+}
+/* Numbered SCAT / Empty_credit cells flash their matching big RNG value. */
+.reel-cell-seq {
+  cursor: pointer;
+}
+.reel-cell-seq:hover {
+  background: var(--panel-2);
+}
+.reel-cell-seq:active {
+  background: var(--accent);
+  color: #fff;
 }
 
 /* Symbol search (visible-grid) ------------------------------------------ */
