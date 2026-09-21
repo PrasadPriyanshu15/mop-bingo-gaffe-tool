@@ -447,46 +447,53 @@ export async function listAmountsMatchingPattern(
   return out;
 }
 
+/**
+ * Awards for `amount`. When `facadeId` is a number the result is scoped to that
+ * bet line; when it is null the query spans every facade in one indexed pass
+ * (ordered by FacadeId) — used by the "All bet lines" search, which would
+ * otherwise fire one query per facade through the serialized connection.
+ */
 export async function findAwardsByAmount(
   h: DbHandle,
-  facadeId: number,
+  facadeId: number | null,
   amount: number
 ): Promise<Award[]> {
   // Some Award tables (Type 2, and segment-less HPP files) have no StartState
   // column, so select it only when the probe found it.
-  if (!h.hasStartState) {
-    const { rows } = await h.sqlite3.execWithParams(
-      h.db,
-      "SELECT AwardId,FacadeId,Tier,Amount,Flags,TotalCount,SequenceStart " +
-        "FROM Award WHERE FacadeId=? AND Amount=? ORDER BY AwardId",
-      [facadeId, amount]
-    );
-    return rows.map((r: any[]) => ({
-      awardId: Number(r[0]),
-      facadeId: Number(r[1]),
-      tier: Number(r[2]),
-      amount: Number(r[3]),
-      flags: String(r[4]),
-      totalCount: Number(r[5]),
-      sequenceStart: Number(r[6]),
-    }));
-  }
+  const cols = h.hasStartState
+    ? "AwardId,FacadeId,Tier,Amount,Flags,StartState,TotalCount,SequenceStart"
+    : "AwardId,FacadeId,Tier,Amount,Flags,TotalCount,SequenceStart";
+  const where = facadeId == null ? "Amount=?" : "FacadeId=? AND Amount=?";
+  const params = facadeId == null ? [amount] : [facadeId, amount];
+  // With no facade scope, order by FacadeId so results stay grouped per bet line.
+  const order = facadeId == null ? "ORDER BY FacadeId,AwardId" : "ORDER BY AwardId";
   const { rows } = await h.sqlite3.execWithParams(
     h.db,
-    "SELECT AwardId,FacadeId,Tier,Amount,Flags,StartState,TotalCount,SequenceStart " +
-      "FROM Award WHERE FacadeId=? AND Amount=? ORDER BY AwardId",
-    [facadeId, amount]
+    `SELECT ${cols} FROM Award WHERE ${where} ${order}`,
+    params
   );
-  return rows.map((r: any[]) => ({
-    awardId: Number(r[0]),
-    facadeId: Number(r[1]),
-    tier: Number(r[2]),
-    amount: Number(r[3]),
-    flags: String(r[4]),
-    startState: r[5] == null ? null : String(r[5]),
-    totalCount: Number(r[6]),
-    sequenceStart: Number(r[7]),
-  }));
+  return rows.map((r: any[]) =>
+    h.hasStartState
+      ? {
+          awardId: Number(r[0]),
+          facadeId: Number(r[1]),
+          tier: Number(r[2]),
+          amount: Number(r[3]),
+          flags: String(r[4]),
+          startState: r[5] == null ? null : String(r[5]),
+          totalCount: Number(r[6]),
+          sequenceStart: Number(r[7]),
+        }
+      : {
+          awardId: Number(r[0]),
+          facadeId: Number(r[1]),
+          tier: Number(r[2]),
+          amount: Number(r[3]),
+          flags: String(r[4]),
+          totalCount: Number(r[5]),
+          sequenceStart: Number(r[6]),
+        }
+  );
 }
 
 /**
@@ -604,20 +611,26 @@ function parseRng(value: unknown): number[] {
  * range [SequenceStart, SequenceStart+TotalCount-1], so this is a fast PK-range
  * read — no scan of the 5M-row table. Type 2 reconstructs each presentation's
  * RNG from the Segment table instead (see getSegmentReelStops).
+ *
+ * `limit` bounds how many presentations are read; pass null (the default) to
+ * load every presentation in the award's range. Callers that just want a preview
+ * pass a small number.
  */
 export async function getReelStops(
   h: DbHandle,
   award: Award,
-  limit = 8,
+  limit: number | null = null,
   rngLen: RngLenFilter | null = null
 ): Promise<ReelStopCandidate[]> {
   if (h.type === "type2")
-    return getSegmentReelStops(h, award, limit, null, rngLen);
+    return getSegmentReelStops(h, award, limit ?? award.totalCount, null, rngLen);
   const hi = award.sequenceStart + award.totalCount - 1;
+  // SQLite treats a negative LIMIT as "no limit", so null → -1 loads the whole
+  // award range.
   const { rows } = await h.sqlite3.execWithParams(
     h.db,
     "SELECT RngValues FROM Presentation WHERE PresentationId BETWEEN ? AND ? LIMIT ?",
-    [award.sequenceStart, hi, limit]
+    [award.sequenceStart, hi, limit ?? -1]
   );
   return rows
     .map((r: any[]) => ({ values: parseRng(r[0]) }))

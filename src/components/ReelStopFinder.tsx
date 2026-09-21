@@ -342,7 +342,7 @@ export default function ReelStopFinder({
                   rngLen,
                   advanced
                 )
-              : await db.getReelStops(handleRef.current, award, 8);
+              : await db.getReelStops(handleRef.current, award);
             awards.push({ award, facadeKey: facade.facadeKey, reelStops });
           }
         }

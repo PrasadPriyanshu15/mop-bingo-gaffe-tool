@@ -923,35 +923,37 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
 
     try {
       const db = await import("@/lib/db");
-      const targets = showAll
-        ? facades
-        : facades.filter((f) => String(f.facadeId) === sel);
       const facadeIdParam = showAll ? null : Number(sel);
+      // facadeId → key, so awards from a single all-bet-lines query can be
+      // labelled without a per-facade lookup.
+      const facadeKeyById = new Map(facades.map((f) => [f.facadeId, f.facadeKey]));
 
       // Single amount → award cards (with reelStops).
       if (amt.kind === "single") {
         const awards: AwardResult[] = [];
-        for (const facade of targets) {
-          const found = await db.findAwardsByAmount(
-            handleRef.current,
-            facade.facadeId,
-            amt.v
-          );
+        // One indexed query for the whole selection (every bet line when
+        // facadeIdParam is null) instead of one query per facade.
+        const found = await db.findAwardsByAmount(
+          handleRef.current,
+          facadeIdParam,
+          amt.v
+        );
+        if (stale()) return;
+        for (const award of found) {
+          const facadeKey =
+            facadeKeyById.get(award.facadeId) ?? String(award.facadeId);
+          const reelStops = filterActive
+            ? await db.findMatchingReelStops(
+                handleRef.current,
+                award,
+                pat,
+                2000,
+                rngLen,
+                advanced
+              )
+            : await db.getReelStops(handleRef.current, award);
           if (stale()) return;
-          for (const award of found) {
-            const reelStops = filterActive
-              ? await db.findMatchingReelStops(
-                  handleRef.current,
-                  award,
-                  pat,
-                  2000,
-                  rngLen,
-                  advanced
-                )
-              : await db.getReelStops(handleRef.current, award, 8);
-            if (stale()) return;
-            awards.push({ award, facadeKey: facade.facadeKey, reelStops });
-          }
+          awards.push({ award, facadeKey, reelStops });
         }
         setView({ mode: "awards", awards, amount: amt.v });
         return;
@@ -981,22 +983,25 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
       for (let i = 0; i < amounts.length; i++) {
         const a = amounts[i];
         const matched: AwardResult[] = [];
-        for (const facade of targets) {
-          const found = await db.findAwardsByAmount(handleRef.current, facade.facadeId, a);
+        const found = await db.findAwardsByAmount(handleRef.current, facadeIdParam, a);
+        if (stale()) return;
+        for (const award of found) {
+          const rs = await db.findMatchingReelStops(
+            handleRef.current,
+            award,
+            pat,
+            2000,
+            rngLen,
+            advanced
+          );
           if (stale()) return;
-          for (const award of found) {
-            const rs = await db.findMatchingReelStops(
-              handleRef.current,
+          if (rs.length > 0) {
+            matched.push({
               award,
-              pat,
-              2000,
-              rngLen,
-              advanced
-            );
-            if (stale()) return;
-            if (rs.length > 0) {
-              matched.push({ award, facadeKey: facade.facadeKey, reelStops: rs });
-            }
+              facadeKey:
+                facadeKeyById.get(award.facadeId) ?? String(award.facadeId),
+              reelStops: rs,
+            });
           }
         }
         if (matched.length > 0) groups.push({ amount: a, awards: matched });
@@ -1041,34 +1046,37 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
 
     try {
       const db = await import("@/lib/db");
-      const targets = showFacade
-        ? facades
-        : facades.filter((f) => String(f.facadeId) === facadeSel);
+      const facadeIdParam = showFacade ? null : Number(facadeSel);
+      const facadeKeyById = new Map(facades.map((f) => [f.facadeId, f.facadeKey]));
 
       const out: WinSection[] = [];
       for (const w of wins) {
         const awards: AwardResult[] = [];
-        for (const facade of targets) {
-          const found = await db.findAwardsByAmount(
-            handleRef.current,
-            facade.facadeId,
-            w.payout
-          );
+        // One query across the selection per win, instead of one per facade.
+        const found = await db.findAwardsByAmount(
+          handleRef.current,
+          facadeIdParam,
+          w.payout
+        );
+        if (stale()) return;
+        for (const award of found) {
+          const reelStops = constrained
+            ? await db.findMatchingReelStops(
+                handleRef.current,
+                award,
+                pat,
+                2000,
+                rngLen,
+                advanced
+              )
+            : await db.getReelStops(handleRef.current, award);
           if (stale()) return;
-          for (const award of found) {
-            const reelStops = constrained
-              ? await db.findMatchingReelStops(
-                  handleRef.current,
-                  award,
-                  pat,
-                  2000,
-                  rngLen,
-                  advanced
-                )
-              : await db.getReelStops(handleRef.current, award, 8);
-            if (stale()) return;
-            awards.push({ award, facadeKey: facade.facadeKey, reelStops });
-          }
+          awards.push({
+            award,
+            facadeKey:
+              facadeKeyById.get(award.facadeId) ?? String(award.facadeId),
+            reelStops,
+          });
         }
         out.push({ key: w.key, label: w.label, amount: w.payout, awards });
       }
