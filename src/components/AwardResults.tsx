@@ -49,11 +49,21 @@ export default function AwardResults({
   const [copied, setCopied] = useState<string | null>(null);
   const [applied, setApplied] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  // Which reelStop row was last copied / used / slotted — keeps a green border
+  // on that single row (only one at a time) as a visual "this one" marker.
+  const [usedKey, setUsedKey] = useState<string | null>(null);
+  // 0-based index typed by the user; highlights that RNG value in every row.
+  // Empty string clears the highlight.
+  const [highlightPos, setHighlightPos] = useState<string>("");
 
   const parsed = parsePattern(pattern);
   const filterActive = patternIsActive(parsed);
 
-  async function copy(text: string) {
+  const hlPos =
+    highlightPos.trim() === "" ? -1 : Number.parseInt(highlightPos, 10);
+
+  async function copy(text: string, rowKey: string) {
+    setUsedKey(rowKey);
     try {
       await navigator.clipboard.writeText(text);
       setCopied(text);
@@ -63,7 +73,8 @@ export default function AwardResults({
     }
   }
 
-  function apply(rs: number[], text: string) {
+  function apply(rs: number[], text: string, rowKey: string) {
+    setUsedKey(rowKey);
     onApply(rs);
     setApplied(text);
     setTimeout(() => setApplied(null), 1200);
@@ -97,6 +108,29 @@ export default function AwardResults({
 
   return (
     <div className="award-results">
+      <div className="rng-pos-bar">
+        <label htmlFor="rng-pos-input">Highlight RNG position</label>
+        <input
+          id="rng-pos-input"
+          type="number"
+          min={0}
+          inputMode="numeric"
+          placeholder="0-based index"
+          value={highlightPos}
+          onChange={(e) => setHighlightPos(e.target.value)}
+          className="rng-pos-input"
+        />
+        {hlPos >= 0 && (
+          <button
+            type="button"
+            className="rng-pos-clear"
+            onClick={() => setHighlightPos("")}
+            title="Clear highlight"
+          >
+            clear
+          </button>
+        )}
+      </div>
       {cards.map(({ award, facadeKey, shown }) => {
         const isEmpty = shown.length === 0;
         const open = filterActive ? !isEmpty : expanded.has(award.awardId);
@@ -139,8 +173,14 @@ export default function AwardResults({
                 {shown.map((cand, i) => {
                   const rs = cand.values;
                   const text = `[${rs.join(",")}]`;
+                  const rowKey = `${facadeKey}:${award.awardId}:${i}`;
                   return (
-                    <div key={i} className="reelstop">
+                    <div
+                      key={i}
+                      className={
+                        "reelstop" + (usedKey === rowKey ? " used" : "")
+                      }
+                    >
                       {cand.presentationId != null && (
                         <span
                           className="reelstop-pid"
@@ -149,7 +189,22 @@ export default function AwardResults({
                           P#{cand.presentationId}
                         </span>
                       )}
-                      <span className="reelstop-vals">{text}</span>
+                      <span className="reelstop-vals">
+                        {hlPos >= 0 && hlPos < rs.length ? (
+                          <>
+                            {"[" +
+                              (hlPos > 0
+                                ? rs.slice(0, hlPos).join(",") + ","
+                                : "")}
+                            <span className="reelstop-val-hl">{rs[hlPos]}</span>
+                            {(hlPos < rs.length - 1
+                              ? "," + rs.slice(hlPos + 1).join(",")
+                              : "") + "]"}
+                          </>
+                        ) : (
+                          text
+                        )}
+                      </span>
                       <span
                         className="reelstop-count"
                         title={`${rs.length} RNG value${
@@ -161,7 +216,7 @@ export default function AwardResults({
                       <button
                         type="button"
                         className="reelstop-btn reelstop-apply"
-                        onClick={() => apply(rs, text)}
+                        onClick={() => apply(rs, text, rowKey)}
                         title="Use in gaffe result"
                       >
                         {applied === text ? "✓" : "+"}
@@ -169,7 +224,7 @@ export default function AwardResults({
                       <button
                         type="button"
                         className="reelstop-btn"
-                        onClick={() => copy(text)}
+                        onClick={() => copy(text, rowKey)}
                         title="Copy reelStops"
                       >
                         {copied === text ? "✓" : "copy"}
@@ -179,7 +234,10 @@ export default function AwardResults({
                           type="button"
                           className="reelstop-btn reelstop-slot"
                           disabled={!reelStripLoaded}
-                          onClick={() => onSlot(rs, cand.presentationId)}
+                          onClick={() => {
+                            setUsedKey(rowKey);
+                            onSlot(rs, cand.presentationId);
+                          }}
                           title={
                             reelStripLoaded
                               ? "Load into the reelStrip viewer"

@@ -2025,6 +2025,49 @@ button.reel-foot-tag:disabled {
   gap: 6px;
   margin-top: 8px;
 }
+.rng-pos-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rng-pos-bar label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.rng-pos-input {
+  width: 120px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: var(--text);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+.rng-pos-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.rng-pos-clear {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+  font-family: system-ui, sans-serif;
+  font-size: 10.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.rng-pos-clear:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
 .reelstop {
   display: flex;
   align-items: center;
@@ -2038,6 +2081,19 @@ button.reel-foot-tag:disabled {
   color: var(--text);
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
+}
+/* Marks the single row that was last copied / used / slotted. */
+.reelstop.used {
+  border-color: var(--free);
+  box-shadow: 0 0 0 1px var(--free);
+}
+/* The RNG value at the user-typed 0-based position. */
+.reelstop-val-hl {
+  background: var(--free);
+  color: #04120a;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-weight: 700;
 }
 .reelstop-pid {
   flex: 0 0 auto;

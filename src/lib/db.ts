@@ -84,14 +84,54 @@ export interface DbHandle {
   hasStartState: boolean;
 }
 
-/** Read-only VFS that serves a single uploaded File via byte-range reads. */
+/**
+ * Read-only VFS that serves a single uploaded File via byte-range reads.
+ *
+ * SQLite reads the DB one page at a time (4–8 KB), and each raw read is a
+ * separate `File.slice().arrayBuffer()` round-trip. A filtered award scan reads
+ * a contiguous PresentationId range — i.e. contiguous B-tree pages — so it fires
+ * thousands of tiny sequential File reads. To cut that, reads go through a
+ * read-ahead block cache: a page read pulls a 64 KB aligned block (≈16 pages) in
+ * one File.slice, and an LRU-bounded map keeps recent blocks so adjacent and
+ * repeated reads (interior B-tree / index pages) hit memory instead of the File.
+ * The file is opened read-only and never mutated, so cached blocks stay valid.
+ */
 class FileVFS extends (Base as any) {
   name = "uploaded-file";
   private file: File;
+  private fileSize: number;
+  // 64 KB blocks; ~16 SQLite pages per File read. Aligned to block boundaries.
+  private static readonly BLOCK = 65536;
+  // Cap the cache at 1024 blocks (64 MB). Bounded so a huge DB can't grow it
+  // without limit; sequential scans still benefit from read-ahead within it.
+  private static readonly MAX_BLOCKS = 1024;
+  // Insertion-ordered → used as an LRU (re-insert on hit, evict oldest key).
+  private blocks = new Map<number, Uint8Array>();
 
   constructor(file: File) {
     super();
     this.file = file;
+    this.fileSize = file.size;
+  }
+
+  /** Fetch (or reuse) the 64 KB block containing byte offset `index * BLOCK`. */
+  private async getBlock(index: number): Promise<Uint8Array> {
+    const hit = this.blocks.get(index);
+    if (hit) {
+      // LRU touch: move to newest.
+      this.blocks.delete(index);
+      this.blocks.set(index, hit);
+      return hit;
+    }
+    const bgn = index * FileVFS.BLOCK;
+    const end = Math.min(bgn + FileVFS.BLOCK, this.fileSize);
+    const buf = new Uint8Array(await this.file.slice(bgn, end).arrayBuffer());
+    this.blocks.set(index, buf);
+    if (this.blocks.size > FileVFS.MAX_BLOCKS) {
+      const oldest = this.blocks.keys().next().value;
+      if (oldest !== undefined) this.blocks.delete(oldest);
+    }
+    return buf;
   }
 
   xOpen(_name: string, fileId: number, _flags: number, pOutFlags: DataView) {
@@ -107,15 +147,24 @@ class FileVFS extends (Base as any) {
 
   xRead(_fileId: number, pData: Uint8Array, iOffset: number) {
     return this.handleAsync(async () => {
-      const size = this.file.size;
-      const bgn = Math.min(iOffset, size);
-      const end = Math.min(iOffset + pData.byteLength, size);
+      const want = pData.byteLength;
+      const bgn = Math.min(iOffset, this.fileSize);
+      const end = Math.min(iOffset + want, this.fileSize);
       const nBytes = end - bgn;
-      if (nBytes > 0) {
-        const buf = await this.file.slice(bgn, end).arrayBuffer();
-        pData.set(new Uint8Array(buf), 0);
+      // Copy the requested range out of the block cache, spanning as many blocks
+      // as the read straddles (a page read can cross a 64 KB boundary).
+      let filled = 0;
+      let pos = bgn;
+      while (pos < end) {
+        const index = Math.floor(pos / FileVFS.BLOCK);
+        const block = await this.getBlock(index);
+        const offInBlock = pos - index * FileVFS.BLOCK;
+        const copyLen = Math.min(end - pos, block.byteLength - offInBlock);
+        pData.set(block.subarray(offInBlock, offInBlock + copyLen), filled);
+        filled += copyLen;
+        pos += copyLen;
       }
-      if (nBytes < pData.byteLength) {
+      if (nBytes < want) {
         pData.fill(0, nBytes);
         return SQLITE_IOERR_SHORT_READ;
       }
@@ -125,7 +174,7 @@ class FileVFS extends (Base as any) {
 
   xFileSize(_fileId: number, pSize64: DataView) {
     return this.handleAsync(async () => {
-      pSize64.setBigInt64(0, BigInt(this.file.size), true);
+      pSize64.setBigInt64(0, BigInt(this.fileSize), true);
       return SQLITE_OK;
     });
   }
@@ -196,7 +245,13 @@ export async function openDatabase(
   sqlite3.vfs_register(vfs, false);
 
   const db = await sqlite3.open_v2("main.db", SQLITE_OPEN_READONLY, vfs.name);
-  await sqlite3.exec(db, "PRAGMA query_only=1;");
+  // Read-only, and give SQLite a large page cache (~64 MiB) plus in-memory temp
+  // storage so repeated scans reuse pages instead of hitting the (async) VFS.
+  // All safe for a read-only DB — nothing is written back to the uploaded file.
+  await sqlite3.exec(
+    db,
+    "PRAGMA query_only=1; PRAGMA cache_size=-65536; PRAGMA temp_store=MEMORY;"
+  );
 
   // HPP games ship in two shapes: some carry a Segment table (RngValues split
   // across SegmentIndex rows — the Type 2 path), some don't. When a file marked
