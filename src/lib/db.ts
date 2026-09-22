@@ -100,6 +100,9 @@ class FileVFS extends (Base as any) {
   name = "uploaded-file";
   private file: File;
   private fileSize: number;
+  // The wa-sqlite Emscripten module. Kept so xRead can re-derive its destination
+  // against the *live* WASM heap (module.HEAPU8) after awaiting — see xRead.
+  private module: any;
   // 64 KB blocks; ~16 SQLite pages per File read. Aligned to block boundaries.
   private static readonly BLOCK = 65536;
   // Cap the cache at 1024 blocks (64 MB). Bounded so a huge DB can't grow it
@@ -108,10 +111,11 @@ class FileVFS extends (Base as any) {
   // Insertion-ordered → used as an LRU (re-insert on hit, evict oldest key).
   private blocks = new Map<number, Uint8Array>();
 
-  constructor(file: File) {
+  constructor(file: File, module: any) {
     super();
     this.file = file;
     this.fileSize = file.size;
+    this.module = module;
   }
 
   /** Fetch (or reuse) the 64 KB block containing byte offset `index * BLOCK`. */
@@ -146,13 +150,25 @@ class FileVFS extends (Base as any) {
   }
 
   xRead(_fileId: number, pData: Uint8Array, iOffset: number) {
+    // `pData` is a view into the WASM heap (HEAPU8.subarray) captured by wa-sqlite
+    // *before* this async call runs. Because xRead is async, the Asyncify unwind
+    // that suspends it — and any work the query does while suspended — can grow
+    // the WASM memory, which reassigns HEAPU8 to a new ArrayBuffer and DETACHES
+    // the buffer `pData` points at. Writing to it then throws "detached or
+    // out-of-bounds ArrayBuffer". So capture the destination's pointer/length now
+    // (still valid), do all awaits into a JS-heap buffer, then re-derive a fresh
+    // view over the *current* heap and copy synchronously.
+    const ptr = pData.byteOffset;
+    const len = pData.byteLength;
     return this.handleAsync(async () => {
-      const want = pData.byteLength;
+      const want = len;
       const bgn = Math.min(iOffset, this.fileSize);
       const end = Math.min(iOffset + want, this.fileSize);
       const nBytes = end - bgn;
-      // Copy the requested range out of the block cache, spanning as many blocks
-      // as the read straddles (a page read can cross a 64 KB boundary).
+      // Assemble the requested range into a JS-heap buffer, spanning as many
+      // blocks as the read straddles (a page read can cross a 64 KB boundary).
+      // All awaits happen here, before pData's heap is touched.
+      const out = new Uint8Array(nBytes);
       let filled = 0;
       let pos = bgn;
       while (pos < end) {
@@ -160,12 +176,16 @@ class FileVFS extends (Base as any) {
         const block = await this.getBlock(index);
         const offInBlock = pos - index * FileVFS.BLOCK;
         const copyLen = Math.min(end - pos, block.byteLength - offInBlock);
-        pData.set(block.subarray(offInBlock, offInBlock + copyLen), filled);
+        out.set(block.subarray(offInBlock, offInBlock + copyLen), filled);
         filled += copyLen;
         pos += copyLen;
       }
+      // Re-derive the destination against the live heap (the pre-await view may
+      // now be detached) and copy in one synchronous burst — no await follows.
+      const dst = new Uint8Array(this.module.HEAPU8.buffer, ptr, len);
+      dst.set(out, 0);
       if (nBytes < want) {
-        pData.fill(0, nBytes);
+        dst.fill(0, nBytes);
         return SQLITE_IOERR_SHORT_READ;
       }
       return SQLITE_OK;
@@ -241,7 +261,7 @@ export async function openDatabase(
     return next;
   };
 
-  const vfs = new FileVFS(file);
+  const vfs = new FileVFS(file, module);
   sqlite3.vfs_register(vfs, false);
 
   const db = await sqlite3.open_v2("main.db", SQLITE_OPEN_READONLY, vfs.name);
