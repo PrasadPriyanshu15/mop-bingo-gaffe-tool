@@ -885,10 +885,10 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     }
 
     // Move the slot's RNG window: land the SLOT_REELS values starting at the new
-    // position on the grid (clamped to the available stream).
+    // position on the grid. Keep the start independent of the currently loaded
+    // stream so it can be set before a full RNG candidate is loaded.
     function changeSlotStart(v: number) {
-      const max = Math.max(0, rawValues.length - 1);
-      setSlotStart(Math.max(0, Math.min(max, Math.floor(v || 0))));
+      setSlotStart(Math.max(0, Math.floor(Number.isFinite(v) ? v : 0)));
     }
 
     // Re-land the grid whenever the RNG window moves.
@@ -1067,7 +1067,6 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                       className="select reelstrip-rows"
                       type="number"
                       min={0}
-                      max={Math.max(0, rawValues.length - 1)}
                       value={slotStart}
                       onChange={(e) => changeSlotStart(Number(e.target.value))}
                       title="Which position in the RNG the slot's reel stops start from (default 0). The grid shows the values beginning at this position (e.g. 1 = start from the 2nd RNG value)."
