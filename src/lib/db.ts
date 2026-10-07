@@ -34,9 +34,8 @@ export interface Award {
 }
 
 /**
- * One reelStop candidate. Type 1 has just the RNG values; Type 2 additionally
- * carries the PresentationId it was reconstructed from (from concatenated
- * Segment rows) so the UI can show it.
+ * One reelStop candidate, with the PresentationId so the UI can identify its
+ * source presentation for either database schema.
  */
 export interface ReelStopCandidate {
   values: number[];
@@ -721,11 +720,11 @@ export async function getReelStops(
   // award range.
   const { rows } = await h.sqlite3.execWithParams(
     h.db,
-    "SELECT RngValues FROM Presentation WHERE PresentationId BETWEEN ? AND ? LIMIT ?",
+    "SELECT PresentationId,RngValues FROM Presentation WHERE PresentationId BETWEEN ? AND ? LIMIT ?",
     [award.sequenceStart, hi, limit ?? -1]
   );
   return rows
-    .map((r: any[]) => ({ values: parseRng(r[0]) }))
+    .map((r: any[]) => ({ presentationId: Number(r[0]), values: parseRng(r[1]) }))
     .filter((c: ReelStopCandidate) => rngLenOk(c.values.length, rngLen));
 }
 
@@ -750,16 +749,17 @@ export async function findMatchingReelStops(
   const hi = award.sequenceStart + award.totalCount - 1;
   const { rows } = await h.sqlite3.execWithParams(
     h.db,
-    "SELECT RngValues FROM Presentation WHERE PresentationId BETWEEN ? AND ? LIMIT ?",
+    "SELECT PresentationId,RngValues FROM Presentation WHERE PresentationId BETWEEN ? AND ? LIMIT ?",
     [award.sequenceStart, hi, scanCap]
   );
   const matches: ReelStopCandidate[] = [];
   for (const r of rows as any[][]) {
-    const values = parseRng(r[0]);
+    const presentationId = Number(r[0]);
+    const values = parseRng(r[1]);
     if (!rngLenOk(values.length, rngLen)) continue;
     if (!matchesPattern(values, pattern)) continue;
     if (advanced.length && !matchesAdvanced(values, advanced)) continue;
-    matches.push({ values });
+    matches.push({ values, presentationId });
   }
   return matches;
 }
