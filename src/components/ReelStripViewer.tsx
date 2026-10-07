@@ -226,8 +226,17 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     const [freeGameArmed, setFreeGameArmed] = useState(false);
     // Whether the free-game section (upload + paste + results) is expanded.
     const [fgOpen, setFgOpen] = useState(false);
-    // The uploaded APP-format free-game reel strips (positional / unweighted).
-    const [fgReels, setFgReels] = useState<ReelStrip[] | null>(null);
+    // The uploaded free-game reel strips, grouped into sets exactly like the
+    // main viewer's `sets`/`setIdx` (a file may carry several reel types —
+    // reel1_A..reel5_A, reel1_B..reel5_B, …). `fgReels` below is derived from
+    // the active set so the rest of the free-game code keeps working off a
+    // flat reel list.
+    const [fgReelSets, setFgReelSets] = useState<ReelStripSet[] | null>(null);
+    const [fgReelSetIdx, setFgReelSetIdx] = useState(0);
+    const fgReels = useMemo(
+      () => (fgReelSets ? fgReelSets[fgReelSetIdx]?.reels ?? null : null),
+      [fgReelSets, fgReelSetIdx]
+    );
     const [fgFileName, setFgFileName] = useState<string | null>(null);
     const [fgError, setFgError] = useState<string | null>(null);
     // Raw pasted number list (mixed reel stops + long RNG numbers). Auto-filled
@@ -243,6 +252,25 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     // Slot grid controls for the free-game viewer (mirrors the main viewer).
     const [fgRows, setFgRows] = useState(3);
     const [fgOffset, setFgOffset] = useState(1);
+
+    // Custom (weighted-symbol) free-game layout — an alternative to the
+    // default "5 consecutive 0-99 values = one spin" extractor, for games
+    // whose free-game symbols are weighted (so the reelStop values aren't
+    // plain small direct indices and need the same cumWeights mapping the
+    // main viewer uses). Off by default; the existing default behaviour is
+    // unchanged when this is off.
+    const [fgCustomMode, setFgCustomMode] = useState(false);
+    // 0-based index where the 1st free spin's interval starts/ends in the
+    // pasted RNG stream (inclusive) — e.g. 17-34 = an 18-value spin interval.
+    const [fgFeatureStart, setFgFeatureStart] = useState(0);
+    const [fgFeatureEnd, setFgFeatureEnd] = useState(0);
+    // 0-based index where the 5 reelStop values for the 1st spin start; later
+    // spins reuse the same (featureEnd - featureStart + 1) interval.
+    const [fgReelStopsStart, setFgReelStopsStart] = useState(0);
+    // Per-spin reelStrip-set override (index into `fgReelSets`), for games
+    // whose free spins progress through different reel types. Falls back to
+    // `fgReelSetIdx` when a spin has no override.
+    const [fgSpinReelIdx, setFgSpinReelIdx] = useState<number[]>([]);
 
     // Symbol search -----------------------------------------------------
     // Whether the symbol-search section is expanded.
@@ -426,28 +454,67 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
 
     const canFreeGame = freeGameArmed || scatterCount >= 3;
 
+    // Every number in the pasted/loaded box, in order, unfiltered — the raw
+    // RNG stream. The default extractor below filters this to 0–99 values;
+    // custom mode (weighted symbols) slices it directly by position instead.
+    const fgNumsAll = useMemo(
+      () => fgText.split(/[^0-9]+/).filter(Boolean).map(Number),
+      [fgText]
+    );
+
     // Split the pasted list into free-spin sets: keep only 1–2 digit numbers
     // (0–99 reel stops), drop the long RNG numbers, then chunk into groups of 5.
     const fgSets = useMemo(() => {
-      const nums = fgText.split(/[^0-9]+/).filter(Boolean).map(Number);
-      const small = nums.filter((n) => n <= 99);
+      const small = fgNumsAll.filter((n) => n <= 99);
       const sets: number[][] = [];
       for (let i = 0; i + 5 <= small.length; i += 5) sets.push(small.slice(i, i + 5));
       return sets;
-    }, [fgText]);
+    }, [fgNumsAll]);
+
+    // Custom mode: chunk the raw stream into fixed-size spin intervals keyed
+    // off the two user-given positions. The 1st spin runs
+    // [featureStart, featureEnd] inclusive (interval length = end-start+1);
+    // later spins reuse that same interval, both for the shown values and for
+    // where that spin's reelStops begin.
+    const fgInterval = fgFeatureEnd - fgFeatureStart + 1;
+    const fgCustomSpins = useMemo(() => {
+      if (!fgCustomMode || fgInterval <= 0 || fgFeatureStart < 0) return [];
+      const count = Math.max(
+        0,
+        Math.floor((fgNumsAll.length - fgFeatureStart) / fgInterval)
+      );
+      const out: { values: number[]; reelStopsStart: number }[] = [];
+      for (let i = 0; i < count; i++) {
+        const s = fgFeatureStart + i * fgInterval;
+        out.push({
+          values: fgNumsAll.slice(s, s + fgInterval),
+          reelStopsStart: fgReelStopsStart + i * fgInterval,
+        });
+      }
+      return out;
+    }, [fgCustomMode, fgNumsAll, fgFeatureStart, fgInterval, fgReelStopsStart]);
 
     async function handleFgFile(file: File) {
       setFgError(null);
       try {
         const text = await file.text();
         const isJson = file.name.toLowerCase().endsWith(".json");
-        // Weights (if the JSON carries any) are ignored — free-game stops are
-        // a direct 0-based position into each reel's symbol list.
+        // In default mode the free-game stops are a direct 0-based position
+        // into each reel's symbol list, so any weights parsed from a JSON
+        // file are ignored there; custom mode (below) uses them via the same
+        // cumWeights mapping the main viewer applies.
         const parsed = isJson ? parseReelStripsJson(text) : parseReelStrips(text);
-        setFgReels(parsed);
+        // A file may hold several reel types (reel1_A..reel5_A, reel1_B..,
+        // …) — group them exactly like the main viewer and let the user pick
+        // the active one (and, in custom mode, override it per spin).
+        const grouped = groupReelStripSets(parsed);
+        setFgReelSets(grouped);
+        setFgReelSetIdx(0);
+        setFgSpinReelIdx([]);
         setFgFileName(file.name);
       } catch (e) {
-        setFgReels(null);
+        setFgReelSets(null);
+        setFgReelSetIdx(0);
         setFgFileName(null);
         setFgError(
           e instanceof Error
@@ -1660,6 +1727,45 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
 
                     {fgError && <p className="error">{fgError}</p>}
 
+                    {fgReelSets && fgReelSets.length > 1 && (
+                      <div className="db-controls">
+                        <label className="db-field db-field-grow">
+                          <span className="db-label">
+                            Free-game reelStrip set ({fgReelSets.length} in
+                            file)
+                          </span>
+                          <select
+                            className="select"
+                            value={fgReelSetIdx}
+                            onChange={(e) =>
+                              setFgReelSetIdx(Number(e.target.value))
+                            }
+                          >
+                            {fgReelSets.map((s, i) => (
+                              <option key={i} value={i}>
+                                {s.name ? s.name : `Set ${i + 1}`} —{" "}
+                                {s.reels.length} reels
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    )}
+
+                    {fgReels && (
+                      <label
+                        className="free-game-arm"
+                        title="For games whose free-game symbols are weighted (not plain 0-99 direct stops). Uses the same cumulative-weight mapping as the main reelStrip viewer, driven by a feature interval and a reelStops position instead of auto-detected 5-value runs."
+                      >
+                        <input
+                          type="checkbox"
+                          checked={fgCustomMode}
+                          onChange={(e) => setFgCustomMode(e.target.checked)}
+                        />
+                        Custom (weighted symbols)
+                      </label>
+                    )}
+
                     <div className="sym-search fg-symbol-search">
                       <div className="panel-title">
                         Search free-game RNG by symbol (from DB)
@@ -1992,18 +2098,30 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                                           type="button"
                                           className="reelstop-btn reelstop-slot"
                                           onClick={() => {
-                                            const spins = freeSpinsFromRng(
-                                              m.values
-                                            );
-                                            setFgText(
-                                              spins
-                                                .map((s) => s.join(","))
-                                                .join(", ")
-                                            );
+                                            if (fgCustomMode) {
+                                              // Custom mode slices the raw
+                                              // stream by position (feature
+                                              // start/end + reelStops start),
+                                              // so load every value as-is.
+                                              setFgText(m.values.join(","));
+                                            } else {
+                                              const spins = freeSpinsFromRng(
+                                                m.values
+                                              );
+                                              setFgText(
+                                                spins
+                                                  .map((s) => s.join(","))
+                                                  .join(", ")
+                                              );
+                                            }
                                             setFgPid(m.presentationId ?? null);
                                             setFgAutoNote(null);
                                           }}
-                                          title="Load this candidate's detected free spins into the extractor below"
+                                          title={
+                                            fgCustomMode
+                                              ? "Load this candidate's full RNG into the extractor below (custom mode)"
+                                              : "Load this candidate's detected free spins into the extractor below"
+                                          }
                                         >
                                           load
                                         </button>
@@ -2031,7 +2149,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                       </p>
                     )}
 
-                    {fgReels && fgSets.length > 0 && (
+                    {fgReels && (fgCustomMode || fgSets.length > 0) && (
                       <>
                         <div className="db-controls">
                           <div className="db-field">
@@ -2074,82 +2192,277 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                           </label>
                         </div>
 
-                        <div className="free-game-count">
-                          {fgSets.length} free spin
-                          {fgSets.length === 1 ? "" : "s"}
-                        </div>
-
-                        <div className="free-game-sets">
-                          {fgSets.map((set, si) => {
-                            // Landing strip index per reel for this spin.
-                            const landings = fgReels.map((_, j) => set[j] ?? 0);
-                            // Count scatters visible in this spin's slot window.
-                            let scat = 0;
-                            fgReels.forEach((r, j) => {
-                              const L = r.symbols.length;
-                              for (let k = 0; k < fgRows; k++) {
-                                if (
-                                  isScatter(
-                                    r.symbols[wrap(landings[j] - fgOffset + k, L)]
-                                  )
-                                )
-                                  scat++;
-                              }
-                            });
-                            return (
-                              <div key={si} className="free-game-set">
-                                <div className="free-game-set-head">
-                                  <span className="reelstop-pid">Set {si + 1}</span>
-                                  <code className="free-game-seq">
-                                    {set.join(", ")}
-                                  </code>
-                                  {scat >= 2 && (
-                                    <span className="free-game-scat-badge">
-                                      {scat} SCAT
-                                    </span>
-                                  )}
-                                </div>
-                                <div
-                                  className={
-                                    "fg-grid" + (scat >= 2 ? " has-scatter" : "")
+                        {fgCustomMode ? (
+                          <>
+                            <div className="db-controls">
+                              <label className="db-field">
+                                <span className="db-label">
+                                  Feature starts from
+                                </span>
+                                <input
+                                  className="select reelstrip-rows"
+                                  type="number"
+                                  min={0}
+                                  value={fgFeatureStart}
+                                  onChange={(e) =>
+                                    setFgFeatureStart(
+                                      Math.max(0, Math.floor(Number(e.target.value) || 0))
+                                    )
                                   }
-                                  style={{
-                                    gridTemplateColumns: `repeat(${fgReels.length}, minmax(0, 1fr))`,
-                                  }}
-                                >
-                                  {fgReels.map((r, j) => (
-                                    <div key={`h${j}`} className="fg-grid-head">
-                                      {r.name}
-                                    </div>
-                                  ))}
-                                  {Array.from({ length: fgRows }, (_, k) => k).map(
-                                    (k) =>
-                                      fgReels.map((r, j) => {
-                                        const L = r.symbols.length;
-                                        const sym =
-                                          r.symbols[wrap(landings[j] - fgOffset + k, L)];
-                                        const landed = k === fgOffset;
-                                        const scatCell = isScatter(sym);
-                                        return (
-                                          <div
-                                            key={`${k}-${j}`}
-                                            className={
-                                              "fg-cell" +
-                                              (landed ? " landed" : "") +
-                                              (scatCell ? " scat" : "")
-                                            }
-                                            title={sym}
-                                          >
-                                            {sym}
-                                          </div>
-                                        );
-                                      })
-                                  )}
-                                </div>
+                                  title="0-based position in the pasted RNG where the 1st free spin's interval starts"
+                                />
+                              </label>
+                              <label className="db-field">
+                                <span className="db-label">
+                                  Feature ends at
+                                </span>
+                                <input
+                                  className="select reelstrip-rows"
+                                  type="number"
+                                  min={0}
+                                  value={fgFeatureEnd}
+                                  onChange={(e) =>
+                                    setFgFeatureEnd(
+                                      Math.max(0, Math.floor(Number(e.target.value) || 0))
+                                    )
+                                  }
+                                  title="0-based position (inclusive) where the 1st free spin's interval ends — sets the interval length reused for every later spin"
+                                />
+                              </label>
+                              <label className="db-field">
+                                <span className="db-label">
+                                  reelStops starts from
+                                </span>
+                                <input
+                                  className="select reelstrip-rows"
+                                  type="number"
+                                  min={0}
+                                  value={fgReelStopsStart}
+                                  onChange={(e) =>
+                                    setFgReelStopsStart(
+                                      Math.max(0, Math.floor(Number(e.target.value) || 0))
+                                    )
+                                  }
+                                  title="0-based position in the pasted RNG where the 1st spin's reelStops (consecutive values, one per reel) start"
+                                />
+                              </label>
+                            </div>
+
+                            {fgInterval <= 0 ? (
+                              <p className="error">
+                                “Feature ends at” must be ≥ “Feature starts
+                                from”.
+                              </p>
+                            ) : (
+                              <div className="free-game-count">
+                                interval {fgInterval} · {fgCustomSpins.length}{" "}
+                                free spin{fgCustomSpins.length === 1 ? "" : "s"}
                               </div>
-                            );
-                          })}
-                        </div>
+                            )}
+
+                            <div className="free-game-sets">
+                              {fgCustomSpins.map((spin, si) => {
+                                const spinSetIdx =
+                                  fgSpinReelIdx[si] ?? fgReelSetIdx;
+                                const spinReels =
+                                  fgReelSets?.[spinSetIdx]?.reels ?? fgReels;
+                                // The 5 (per-reel) consecutive values for this
+                                // spin's reelStops, mapped to a landing index
+                                // the same way the main viewer does —
+                                // cumulative weights for HPP strips, direct
+                                // positional wrap otherwise.
+                                const reelStopVals = fgNumsAll.slice(
+                                  spin.reelStopsStart,
+                                  spin.reelStopsStart + spinReels.length
+                                );
+                                const landings = spinReels.map((r, j) =>
+                                  rngToIndex(reelStopVals[j] ?? 0, r)
+                                );
+                                let scat = 0;
+                                spinReels.forEach((r, j) => {
+                                  const L = r.symbols.length;
+                                  for (let k = 0; k < fgRows; k++) {
+                                    if (
+                                      isScatter(
+                                        r.symbols[
+                                          wrap(landings[j] - fgOffset + k, L)
+                                        ]
+                                      )
+                                    )
+                                      scat++;
+                                  }
+                                });
+                                return (
+                                  <div key={si} className="free-game-set">
+                                    <div className="free-game-set-head">
+                                      <span className="reelstop-pid">
+                                        Spin {si + 1}
+                                      </span>
+                                      <code className="free-game-seq">
+                                        {spin.values.join(", ")}
+                                      </code>
+                                      {fgReelSets && fgReelSets.length > 1 && (
+                                        <select
+                                          className="select"
+                                          value={spinSetIdx}
+                                          onChange={(e) => {
+                                            const v = Number(e.target.value);
+                                            setFgSpinReelIdx((prev) => {
+                                              const next = prev.slice();
+                                              next[si] = v;
+                                              return next;
+                                            });
+                                          }}
+                                          title="reelStrip type used to resolve this spin's symbols"
+                                        >
+                                          {fgReelSets.map((s, k) => (
+                                            <option key={k} value={k}>
+                                              {s.name
+                                                ? s.name
+                                                : `Set ${k + 1}`}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      )}
+                                      {scat >= 2 && (
+                                        <span className="free-game-scat-badge">
+                                          {scat} SCAT
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div
+                                      className={
+                                        "fg-grid" +
+                                        (scat >= 2 ? " has-scatter" : "")
+                                      }
+                                      style={{
+                                        gridTemplateColumns: `repeat(${spinReels.length}, minmax(0, 1fr))`,
+                                      }}
+                                    >
+                                      {spinReels.map((r, j) => (
+                                        <div
+                                          key={`h${j}`}
+                                          className="fg-grid-head"
+                                        >
+                                          {r.name}
+                                        </div>
+                                      ))}
+                                      {Array.from(
+                                        { length: fgRows },
+                                        (_, k) => k
+                                      ).map((k) =>
+                                        spinReels.map((r, j) => {
+                                          const L = r.symbols.length;
+                                          const sym =
+                                            r.symbols[
+                                              wrap(
+                                                landings[j] - fgOffset + k,
+                                                L
+                                              )
+                                            ];
+                                          const landed = k === fgOffset;
+                                          const scatCell = isScatter(sym);
+                                          return (
+                                            <div
+                                              key={`${k}-${j}`}
+                                              className={
+                                                "fg-cell" +
+                                                (landed ? " landed" : "") +
+                                                (scatCell ? " scat" : "")
+                                              }
+                                              title={sym}
+                                            >
+                                              {sym}
+                                            </div>
+                                          );
+                                        })
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="free-game-count">
+                              {fgSets.length} free spin
+                              {fgSets.length === 1 ? "" : "s"}
+                            </div>
+
+                            <div className="free-game-sets">
+                              {fgSets.map((set, si) => {
+                                // Landing strip index per reel for this spin.
+                                const landings = fgReels.map((_, j) => set[j] ?? 0);
+                                // Count scatters visible in this spin's slot window.
+                                let scat = 0;
+                                fgReels.forEach((r, j) => {
+                                  const L = r.symbols.length;
+                                  for (let k = 0; k < fgRows; k++) {
+                                    if (
+                                      isScatter(
+                                        r.symbols[wrap(landings[j] - fgOffset + k, L)]
+                                      )
+                                    )
+                                      scat++;
+                                  }
+                                });
+                                return (
+                                  <div key={si} className="free-game-set">
+                                    <div className="free-game-set-head">
+                                      <span className="reelstop-pid">Set {si + 1}</span>
+                                      <code className="free-game-seq">
+                                        {set.join(", ")}
+                                      </code>
+                                      {scat >= 2 && (
+                                        <span className="free-game-scat-badge">
+                                          {scat} SCAT
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div
+                                      className={
+                                        "fg-grid" + (scat >= 2 ? " has-scatter" : "")
+                                      }
+                                      style={{
+                                        gridTemplateColumns: `repeat(${fgReels.length}, minmax(0, 1fr))`,
+                                      }}
+                                    >
+                                      {fgReels.map((r, j) => (
+                                        <div key={`h${j}`} className="fg-grid-head">
+                                          {r.name}
+                                        </div>
+                                      ))}
+                                      {Array.from({ length: fgRows }, (_, k) => k).map(
+                                        (k) =>
+                                          fgReels.map((r, j) => {
+                                            const L = r.symbols.length;
+                                            const sym =
+                                              r.symbols[wrap(landings[j] - fgOffset + k, L)];
+                                            const landed = k === fgOffset;
+                                            const scatCell = isScatter(sym);
+                                            return (
+                                              <div
+                                                key={`${k}-${j}`}
+                                                className={
+                                                  "fg-cell" +
+                                                  (landed ? " landed" : "") +
+                                                  (scatCell ? " scat" : "")
+                                                }
+                                                title={sym}
+                                              >
+                                                {sym}
+                                              </div>
+                                            );
+                                          })
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
