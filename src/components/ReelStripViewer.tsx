@@ -24,6 +24,8 @@ const CELL = 44;
 const MIN_COL = 58;
 /** How many first reelStop positions physically land on the slot grid. */
 const SLOT_REELS = 5;
+/** Bound rare symbol searches so a large bet line cannot monopolize the UI. */
+const SYMBOL_SEARCH_SCAN_LIMIT = 20000;
 /** Threshold above which an RNG value is a "big value" — a SCAT / Empty_credit
  *  reveal that gets numbered 1st, 2nd, 3rd… The base-game preamble (~28-30
  *  one-to-three-digit reel stops) and the single-digit values sitting between
@@ -247,12 +249,15 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     const [symOpen, setSymOpen] = useState(false);
     // Selected target symbol per reel (null = any). Length tracks reels.length.
     const [symSel, setSymSel] = useState<(string | null)[]>([]);
+    // Exact symbol counts required across the whole visible slot grid.
+    const [symAnywhereSyms, setSymAnywhereSyms] = useState<string[]>([""]);
     // Bet line (DB facadeId) the symbol search scopes to.
     const [symFacadeId, setSymFacadeId] = useState<number | null>(null);
     const [symSearching, setSymSearching] = useState(false);
     const [symError, setSymError] = useState<string | null>(null);
     const [symResults, setSymResults] = useState<MatchedReelStop[] | null>(null);
     const [symCapped, setSymCapped] = useState(false);
+    const [symScanCapped, setSymScanCapped] = useState(false);
     const [symProgress, setSymProgress] = useState<{
       done: number;
       total: number;
@@ -373,6 +378,12 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         ),
       [reels]
     );
+    const symAnywhereOptions = useMemo(
+      () => Array.from(new Set((reels ?? []).flatMap((r) => r.symbols))).sort(
+        (a, b) => a.localeCompare(b)
+      ),
+      [reels]
+    );
 
     // Occurrence number for each SCAT / Empty_credit cell, numbered continuously
     // across all reels (reel 1: 1..n, reel 2 continues n+1..), shown as a small
@@ -488,14 +499,18 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     // current rows × offset the grid renders), for every reel that has a choice.
     // The RNG value still drives the landing (offset) row; the match just looks
     // across the whole visible window rather than only that row.
-    async function runSymbolSearch() {
+    async function runSymbolSearch(anywhereSymbols?: string[]) {
       if (!dbHandle || !reels) return;
       if (symFacadeId == null) {
         setSymError("Select a bet line to search.");
         return;
       }
       const wanted = reels.map((_, i) => symSel[i] ?? null);
-      if (!wanted.some((s) => s != null)) {
+      const exactCounts = anywhereSymbols ? new Map<string, number>() : null;
+      for (const symbol of anywhereSymbols ?? []) {
+        if (symbol) exactCounts?.set(symbol, (exactCounts.get(symbol) ?? 0) + 1);
+      }
+      if (exactCounts ? exactCounts.size === 0 : !wanted.some((s) => s != null)) {
         setSymError("Choose at least one symbol in the dropdowns below the grid.");
         return;
       }
@@ -507,6 +522,25 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       // base game's first values.
       const win = { rows, offset, start: slotStart };
       const predicate = (values: number[]): boolean => {
+        if (exactCounts) {
+          const counts = new Map<string, number>();
+          for (let i = 0; i < reels.length; i++) {
+            const rng = values[win.start + i];
+            if (rng == null) return false;
+            const reel = reels[i];
+            const landing = rngToIndex(rng, reel);
+            for (let k = 0; k < win.rows; k++) {
+              const symbol = reel.symbols[
+                wrap(landing - win.offset + k, reel.symbols.length)
+              ];
+              counts.set(symbol, (counts.get(symbol) ?? 0) + 1);
+            }
+          }
+          return Array.from(exactCounts).every(
+            ([symbol, count]) => (counts.get(symbol) ?? 0) === count
+          );
+        }
+
         for (let i = 0; i < reels.length; i++) {
           const want = wanted[i];
           if (!want) continue;
@@ -533,15 +567,17 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       setSymError(null);
       setSymResults(null);
       setSymCapped(false);
+      setSymScanCapped(false);
       setSymProgress({ done: 0, total: 0, found: 0 });
       try {
         const db = await import("@/lib/db");
-        const { results, capped } = await db.findReelStopsMatching(
+        const { results, capped, scanCapped } = await db.findReelStopsMatching(
           dbHandle,
           symFacadeId,
           predicate,
           {
             maxResults: 100,
+            maxScannedCandidates: SYMBOL_SEARCH_SCAN_LIMIT,
             onProgress: (done, total, found) => {
               if (!stale()) setSymProgress({ done, total, found });
             },
@@ -551,6 +587,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         if (stale()) return;
         setSymResults(results);
         setSymCapped(capped);
+        setSymScanCapped(scanCapped);
       } catch (e) {
         if (!stale())
           setSymError(e instanceof Error ? e.message : "Symbol search failed.");
@@ -767,6 +804,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         requestScroll(pos);
         // A new strip changes the symbol set — clear any symbol search state.
         setSymSel(first.map(() => null));
+        setSymAnywhereSyms([""]);
         setSymResults(null);
         setSymError(null);
         setSymProgress(null);
@@ -795,6 +833,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       setRawValues(r.map(() => undefined));
       requestScroll(pos);
       setSymSel(r.map(() => null));
+      setSymAnywhereSyms([""]);
       setSymResults(null);
       setSymError(null);
       setSymProgress(null);
@@ -1287,12 +1326,15 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                         Cancel
                       </button>
                     )}
-                    {(symSel.some((s) => s) || symResults) && (
+                    {(symSel.some((s) => s) ||
+                      symAnywhereSyms.some((s) => s) ||
+                      symResults) && (
                       <button
                         type="button"
                         className="btn btn-small"
                         onClick={() => {
                           setSymSel(reels.map(() => null));
+                          setSymAnywhereSyms([""]);
                           setSymResults(null);
                           setSymError(null);
                         }}
@@ -1312,6 +1354,76 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                     ) reading each reel from RNG start {slotStart}.
                   </p>
 
+                  <div className="sym-anywhere-search">
+                    <span className="db-label">
+                      Search exact symbol counts across any reel
+                    </span>
+                    <div className="fg-sym-slots">
+                      {symAnywhereSyms.map((symbol, i) => (
+                        <div key={i} className="fg-sym-slot">
+                          <select
+                            className="select"
+                            value={symbol}
+                            aria-label={`Symbol requirement ${i + 1}`}
+                            onChange={(e) =>
+                              setSymAnywhereSyms((prev) =>
+                                prev.map((value, j) =>
+                                  j === i ? e.target.value : value
+                                )
+                              )
+                            }
+                          >
+                            <option value="">Choose symbol</option>
+                            {symAnywhereOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                          {symAnywhereSyms.length > 1 && (
+                            <button
+                              type="button"
+                              className="btn btn-small fg-sym-del"
+                              onClick={() =>
+                                setSymAnywhereSyms((prev) =>
+                                  prev.filter((_, j) => j !== i)
+                                )
+                              }
+                              title="Remove this symbol requirement"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        onClick={() =>
+                          setSymAnywhereSyms((prev) => [...prev, ""])
+                        }
+                        title="Add another exact symbol requirement"
+                      >
+                        + symbol
+                      </button>
+                    </div>
+                    <div className="sym-search-controls">
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => void runSymbolSearch(symAnywhereSyms)}
+                        disabled={symSearching}
+                        title="Find RNG with these exact symbol counts across the visible slot grid"
+                      >
+                        {symSearching ? "Searching…" : "Search anywhere"}
+                      </button>
+                    </div>
+                    <p className="muted small">
+                      Repeating a symbol requires exactly that many in the
+                      visible grid; other symbols are unrestricted.
+                    </p>
+                  </div>
+
                   {symProgress && (
                     <p className="muted small">
                       Scanned {symProgress.done} / {symProgress.total} awards ·{" "}
@@ -1325,13 +1437,17 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                       <p className="muted small">
                         No RNG in this bet line shows those symbols in the
                         visible grid.
+                        {symScanCapped && (
+                          <> Search stopped after scanning the first {SYMBOL_SEARCH_SCAN_LIMIT.toLocaleString()} candidates.</>
+                        )}
                       </p>
                     ) : (
                       <>
                         <p className="muted small">
                           {symResults.length} match
                           {symResults.length === 1 ? "" : "es"}
-                          {symCapped ? " (first 100)" : ""}:
+                          {symCapped ? " (first 100)" : ""}
+                          {symScanCapped && " (scan limit reached)"}:
                         </p>
                         <div className="reelstop-list">
                           {symResults.map((m, i) => {

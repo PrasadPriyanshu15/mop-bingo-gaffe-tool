@@ -640,20 +640,31 @@ export async function findReelStopsMatching(
   opts?: {
     maxResults?: number;
     perAwardCap?: number;
+    maxScannedCandidates?: number;
     onProgress?: (done: number, total: number, found: number) => void;
     shouldStop?: () => boolean;
   }
-): Promise<{ results: MatchedReelStop[]; capped: boolean }> {
+): Promise<{ results: MatchedReelStop[]; capped: boolean; scanCapped: boolean }> {
   const maxResults = opts?.maxResults ?? 100;
   const perAwardCap = opts?.perAwardCap ?? 500;
+  const maxScannedCandidates = opts?.maxScannedCandidates ?? Infinity;
   const awards = await findAwardsByFacade(h, facadeId);
   const results: MatchedReelStop[] = [];
   let capped = false;
+  let scannedCandidates = 0;
+  let scanCapped = false;
   for (let i = 0; i < awards.length; i++) {
     if (opts?.shouldStop?.()) break;
     const award = awards[i];
-    const cands = await getReelStops(h, award, perAwardCap);
+    const remaining = maxScannedCandidates - scannedCandidates;
+    if (remaining <= 0) {
+      scanCapped = true;
+      break;
+    }
+    const awardLimit = Math.min(perAwardCap, remaining);
+    const cands = await getReelStops(h, award, awardLimit);
     for (const c of cands) {
+      scannedCandidates++;
       if (predicate(c.values)) {
         results.push({
           values: c.values,
@@ -667,10 +678,16 @@ export async function findReelStopsMatching(
         }
       }
     }
+    if (
+      scannedCandidates >= maxScannedCandidates &&
+      (i < awards.length - 1 || award.totalCount > awardLimit)
+    ) {
+      scanCapped = true;
+    }
     opts?.onProgress?.(i + 1, awards.length, results.length);
-    if (capped) break;
+    if (capped || scanCapped) break;
   }
-  return { results, capped };
+  return { results, capped, scanCapped };
 }
 
 /** Parse a RngValues string like "36,28,14,4,31,0,0," into reel stops. */
