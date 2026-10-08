@@ -845,3 +845,19 @@ export async function getFreeGameRng(
     .filter(Boolean)
     .join(",");
 }
+
+/** RNG data for a presentation entered directly in the free-game viewer.
+ * Type 2 stores free-game continuation in SegmentIndex 2+; Type 1 stores the
+ * complete RNG stream on Presentation, which the viewer's extractor parses. */
+export async function getPresentationFreeGameRng(
+  h: DbHandle,
+  presentationId: number
+): Promise<string> {
+  if (h.type === "type2") return getFreeGameRng(h, presentationId);
+  const { rows } = await h.sqlite3.execWithParams(
+    h.db,
+    "SELECT RngValues FROM Presentation WHERE PresentationId=?",
+    [presentationId]
+  );
+  return rows.map((r: any[]) => String(r[0] ?? "").trim()).filter(Boolean).join(",");
+}

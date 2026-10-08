@@ -312,7 +312,11 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     //  • "count": the original — one symbol that must appear ≥ N times in a spin.
     //  • "set": up to MAX_FG_SYMS symbols that must all appear (each on its own
     //    cell) in a single spin.
-    const [fgSearchMode, setFgSearchMode] = useState<"count" | "set">("set");
+    const [fgSearchMode, setFgSearchMode] = useState<
+      "count" | "set" | "presentation"
+    >("set");
+    const [fgSearchPresentationId, setFgSearchPresentationId] = useState("");
+    const [fgLookupLoadedId, setFgLookupLoadedId] = useState<number | null>(null);
     // Set mode: symbol requirements. Each entry is "" (unused), a symbol name,
     // or FG_ANY_SCAT (any scatter). Repeating a symbol requires that many cells.
     const [fgSearchSyms, setFgSearchSyms] = useState<string[]>([""]);
@@ -706,6 +710,53 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     async function runFgSearch() {
       if (!dbHandle) {
         setFgSearchError("Open the outcomes DB (panel 5) to search.");
+        return;
+      }
+      if (fgSearchMode === "presentation") {
+        const presentationId = Number(fgSearchPresentationId);
+        if (
+          !fgSearchPresentationId.trim() ||
+          !Number.isSafeInteger(presentationId) ||
+          presentationId < 0
+        ) {
+          setFgSearchError("Enter a valid non-negative presentation ID.");
+          return;
+        }
+        setFgSearching(true);
+        setFgSearchError(null);
+        setFgSearchResults(null);
+        setFgSearchProgress(null);
+        setFgAutoNote(null);
+        setFgLookupLoadedId(null);
+        try {
+          const db = await import("@/lib/db");
+          const rng = await db.getPresentationFreeGameRng(
+            dbHandle,
+            presentationId
+          );
+          if (rng.trim() === "") {
+            setFgText("");
+            setFgPid(null);
+            setFgAutoNote(
+              `No free-game RNG found for presentation P#${presentationId}.`
+            );
+          } else {
+            setFgText(rng);
+            setFgPid(dbHandle.type === "type2" ? presentationId : null);
+            setFgLookupLoadedId(presentationId);
+            setFgAutoNote(
+              `Loaded presentation P#${presentationId} into the extractor.`
+            );
+          }
+        } catch (e) {
+          setFgSearchError(
+            e instanceof Error
+              ? e.message
+              : "Presentation lookup failed."
+          );
+        } finally {
+          setFgSearching(false);
+        }
         return;
       }
       if (!fgReels) {
@@ -1815,7 +1866,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                         <span className="reelstop-pid" title="PresentationId">
                           P#{fgPid}
                         </span>
-                        {fgAutoNote && (
+                        {fgAutoNote && fgSearchMode !== "presentation" && (
                           <span className="muted small">{fgAutoNote}</span>
                         )}
                       </div>
@@ -1890,17 +1941,18 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                       <div className="panel-title">
                         Search free-game RNG by symbol (from DB)
                       </div>
-                      {!fgReels ? (
-                        <p className="muted small">
-                          Load the free-game reel file above to search RNG by
-                          symbol.
-                        </p>
-                      ) : !dbHandle ? (
+                      {!dbHandle ? (
                         <p className="muted small">
                           Open the outcomes DB (panel 5) to scan for matching RNG.
                         </p>
                       ) : (
                         <>
+                          {!fgReels && (
+                            <p className="muted small">
+                              Load the free-game reel file above to search by
+                              symbols. Presentation ID lookup can be used now.
+                            </p>
+                          )}
                           <div className="db-field">
                             <span className="db-label">Match</span>
                             <div className="seg">
@@ -1924,8 +1976,19 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                               >
                                 Set of symbols
                               </button>
+                              <button
+                                type="button"
+                                className={
+                                  "seg-btn" +
+                                  (fgSearchMode === "presentation" ? " on" : "")
+                                }
+                                onClick={() => setFgSearchMode("presentation")}
+                              >
+                                Presentation ID
+                              </button>
                             </div>
                           </div>
+                          {fgSearchMode !== "presentation" && (
                           <p className="muted small">
                             {fgSearchMode === "count" ? (
                               <>
@@ -1947,7 +2010,28 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                             the RNG (first run of 5 one/two-digit values, ~30th
                             element on).
                           </p>
+                          )}
                           <div className="sym-search-controls">
+                            {fgSearchMode === "presentation" ? (
+                              <label className="db-field db-field-grow">
+                                <span className="db-label">Presentation ID</span>
+                                <input
+                                  className="select"
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  value={fgSearchPresentationId}
+                                  onChange={(e) =>
+                                    setFgSearchPresentationId(e.target.value)
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !fgSearching)
+                                      void runFgSearch();
+                                  }}
+                                  placeholder="e.g. 123456"
+                                />
+                              </label>
+                            ) : (
                             <label className="db-field db-field-grow">
                               <span className="db-label">Facade (bet line)</span>
                               <select
@@ -1968,6 +2052,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                                 ))}
                               </select>
                             </label>
+                              )}
                             {fgSearchMode === "count" && (
                               <>
                                 <label className="db-field">
@@ -2071,11 +2156,21 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                               className="btn"
                               onClick={() => void runFgSearch()}
                               disabled={fgSearching}
-                              title="Scan this bet line's RNG for free games where one spin shows all the chosen symbols"
+                              title={
+                                fgSearchMode === "presentation"
+                                  ? "Load this presentation's free-game RNG into the extractor"
+                                  : "Scan this bet line's RNG for free games where one spin shows the chosen symbols"
+                              }
                             >
-                              {fgSearching ? "Searching…" : "Search RNG"}
+                              {fgSearching
+                                ? fgSearchMode === "presentation"
+                                  ? "Loading…"
+                                  : "Searching…"
+                                : fgSearchMode === "presentation"
+                                  ? "Load presentation"
+                                  : "Search RNG"}
                             </button>
-                            {fgSearching && (
+                            {fgSearching && fgSearchMode !== "presentation" && (
                               <button
                                 type="button"
                                 className="btn btn-small"
@@ -2107,6 +2202,16 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                           )}
                           {fgSearchError && (
                             <p className="error">{fgSearchError}</p>
+                          )}
+                          {fgSearchMode === "presentation" && fgAutoNote && (
+                            <p
+                              className={
+                                "muted small" +
+                                (fgLookupLoadedId == null ? " error" : "")
+                              }
+                            >
+                              {fgAutoNote}
+                            </p>
                           )}
 
                           {fgSearchResults &&
