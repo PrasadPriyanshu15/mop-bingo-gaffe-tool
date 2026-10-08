@@ -235,6 +235,10 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     // flat reel list.
     const [fgReelSets, setFgReelSets] = useState<ReelStripSet[] | null>(null);
     const [fgReelSetIdx, setFgReelSetIdx] = useState(0);
+    const [fgAutoSetOpen, setFgAutoSetOpen] = useState(false);
+    const [fgSetRules, setFgSetRules] = useState<
+      { position: string; range: string }[]
+    >([]);
     const fgReels = useMemo(
       () => (fgReelSets ? fgReelSets[fgReelSetIdx]?.reels ?? null : null),
       [fgReelSets, fgReelSetIdx]
@@ -496,6 +500,24 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       return out;
     }, [fgCustomMode, fgNumsAll, fgFeatureStart, fgInterval, fgReelStopsStart]);
 
+    function getMatchingFgSetIndex(values: number[]): number | null {
+      if (!fgReelSets) return null;
+      for (let i = 0; i < fgReelSets.length; i++) {
+        const rule = fgSetRules[i];
+        if (!rule?.position.trim() || !rule.range.trim()) continue;
+        const position = Number(rule.position);
+        const range = rule.range.match(/^(\d+)\s*-\s*(\d+)$/);
+        if (!Number.isInteger(position) || position < 0 || !range) continue;
+        const value = values[position];
+        if (value == null) continue;
+        const first = Number(range[1]);
+        const second = Number(range[2]);
+        if (value >= Math.min(first, second) && value <= Math.max(first, second))
+          return i;
+      }
+      return null;
+    }
+
     async function handleFgFile(file: File) {
       setFgError(null);
       try {
@@ -512,11 +534,13 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         const grouped = groupReelStripSets(parsed);
         setFgReelSets(grouped);
         setFgReelSetIdx(0);
+        setFgSetRules(grouped.map(() => ({ position: "", range: "" })));
         setFgSpinReelIdx([]);
         setFgFileName(file.name);
       } catch (e) {
         setFgReelSets(null);
         setFgReelSetIdx(0);
+        setFgSetRules([]);
         setFgFileName(null);
         setFgError(
           e instanceof Error
@@ -2344,6 +2368,76 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                               </label>
                             </div>
 
+                            {fgReelSets && fgReelSets.length > 1 && (
+                              <div className="reelset-advanced">
+                                <button
+                                  type="button"
+                                  className="btn btn-small"
+                                  onClick={() =>
+                                    setFgAutoSetOpen((value) => !value)
+                                  }
+                                  aria-expanded={fgAutoSetOpen}
+                                >
+                                  {fgAutoSetOpen ? "▾" : "▸"} Advanced reelStrip mapping
+                                </button>
+                                {fgAutoSetOpen && (
+                                  <div className="reelset-rules">
+                                    {fgReelSets.map((set, i) => (
+                                      <div className="reelset-rule" key={i}>
+                                        <strong className="reelset-rule-name">
+                                          {set.name || `Set ${i + 1}`}
+                                        </strong>
+                                        <label className="db-field">
+                                          <span className="db-label">
+                                            Position (0-based)
+                                          </span>
+                                          <input
+                                            className="select reelstrip-rows"
+                                            type="number"
+                                            min={0}
+                                            value={fgSetRules[i]?.position ?? ""}
+                                            onChange={(e) =>
+                                              setFgSetRules((prev) =>
+                                                prev.map((rule, j) =>
+                                                  j === i
+                                                    ? { ...rule, position: e.target.value }
+                                                    : rule
+                                                )
+                                              )
+                                            }
+                                          />
+                                        </label>
+                                        <label className="db-field">
+                                          <span className="db-label">RNG range</span>
+                                          <input
+                                            className="select db-search"
+                                            type="text"
+                                            placeholder="e.g. 100-200"
+                                            value={fgSetRules[i]?.range ?? ""}
+                                            onChange={(e) =>
+                                              setFgSetRules((prev) =>
+                                                prev.map((rule, j) =>
+                                                  j === i
+                                                    ? { ...rule, range: e.target.value }
+                                                    : rule
+                                                )
+                                              )
+                                            }
+                                          />
+                                        </label>
+                                      </div>
+                                    ))}
+                                    <p className="muted small">
+                                      For each spin, the first matching range at
+                                      the given position in its feature interval
+                                      selects the reelStrip set. No match uses
+                                      the selected default set.
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
                             {fgInterval <= 0 ? (
                               <p className="error">
                                 “Feature ends at” must be ≥ “Feature starts
@@ -2358,8 +2452,13 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
 
                             <div className="free-game-sets">
                               {fgCustomSpins.map((spin, si) => {
+                                const mappedSetIdx = getMatchingFgSetIndex(
+                                  spin.values
+                                );
                                 const spinSetIdx =
-                                  fgSpinReelIdx[si] ?? fgReelSetIdx;
+                                  fgSpinReelIdx[si] ??
+                                  mappedSetIdx ??
+                                  fgReelSetIdx;
                                 const spinReels =
                                   fgReelSets?.[spinSetIdx]?.reels ?? fgReels;
                                 // The 5 (per-reel) consecutive values for this
