@@ -192,6 +192,8 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     // derived from the active set — the rest of the component works off `reels`.
     const [sets, setSets] = useState<ReelStripSet[] | null>(null);
     const [setIdx, setSetIdx] = useState(0);
+    const [autoSetOpen, setAutoSetOpen] = useState(false);
+    const [setRules, setSetRules] = useState<{ position: string; range: string }[]>([]);
     const reels = useMemo(
       () => (sets ? sets[setIdx]?.reels ?? null : null),
       [sets, setIdx]
@@ -862,6 +864,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         const pos = first.map(() => 0);
         setSets(grouped);
         setSetIdx(0);
+        setSetRules(grouped.map(() => ({ position: "", range: "" })));
         setPositions(pos);
         setRawValues(first.map(() => undefined));
         setSlotStart(0);
@@ -878,6 +881,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       } catch (e) {
         setSets(null);
         setSetIdx(0);
+        setSetRules([]);
         setPositions([]);
         setRawValues([]);
         onLoadedChange(false);
@@ -906,10 +910,39 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       setSymProgress(null);
     }
 
+    function getMatchingSetIndex(reelStops: number[]): number | null {
+      if (!sets) return null;
+      for (let i = 0; i < sets.length; i++) {
+        const rule = setRules[i];
+        if (!rule?.position.trim() || !rule.range.trim()) continue;
+        const position = Number(rule.position);
+        const range = rule.range.match(/^(\d+)\s*-\s*(\d+)$/);
+        if (!Number.isInteger(position) || position < 0 || !range) continue;
+        const value = reelStops[position];
+        if (value == null) continue;
+        const first = Number(range[1]);
+        const second = Number(range[2]);
+        if (value >= Math.min(first, second) && value <= Math.max(first, second))
+          return i;
+      }
+      return null;
+    }
+
     // Land an RNG candidate on the slot grid. Shared by the imperative handle
     // (used by the DB finders' "slot" buttons) and the symbol-search results.
     function loadReelStops(reelStops: number[], presentationId?: number) {
-      if (!reels) return;
+      const matchedSetIdx = getMatchingSetIndex(reelStops);
+      const targetSetIdx = matchedSetIdx ?? setIdx;
+      const targetReels = sets?.[targetSetIdx]?.reels ?? reels;
+      if (!targetReels) return;
+      if (matchedSetIdx != null && matchedSetIdx !== setIdx) {
+        setSetIdx(matchedSetIdx);
+        setSymSel(targetReels.map(() => null));
+        setSymAnywhereSyms([""]);
+        setSymResults(null);
+        setSymError(null);
+        setSymProgress(null);
+      }
       // A fresh candidate: remember its presentation for FREE GAME auto-load
       // and clear any previous free-game paste/notes so it re-fills cleanly.
       setFgPid(presentationId ?? null);
@@ -921,7 +954,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       // Each RNG value is mapped to a landing stop index: cumulative weights
       // for HPP (.json) strips, direct positional wrap for APP (.xml).
       const pos = reelStops.map((v, i) =>
-        reels[i] ? rngToIndex(v ?? 0, reels[i]) : v
+        targetReels[i] ? rngToIndex(v ?? 0, targetReels[i]) : v
       );
       setOpen(true);
       setPositions(pos);
@@ -934,7 +967,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       // Honour the persisted RNG-start window: column i lands on the value at
       // reelStops[slotStart + i], not the 1:1 position.
       requestScroll(
-        reels.map((r, i) => {
+        targetReels.map((r, i) => {
           if (i >= SLOT_REELS) return undefined;
           const rng = reelStops[slotStart + i];
           return rng != null ? rngToIndex(rng, r) : undefined;
@@ -1111,25 +1144,88 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
             {error && <p className="error">{error}</p>}
 
             {sets && sets.length > 1 && (
-              <div className="db-controls">
-                <label className="db-field db-field-grow">
-                  <span className="db-label">
-                    reelStrip set ({sets.length} in file)
-                  </span>
-                  <select
-                    className="select"
-                    value={setIdx}
-                    onChange={(e) => selectSet(Number(e.target.value))}
+              <>
+                <div className="db-controls">
+                  <label className="db-field db-field-grow">
+                    <span className="db-label">
+                      reelStrip set ({sets.length} in file)
+                    </span>
+                    <select
+                      className="select"
+                      value={setIdx}
+                      onChange={(e) => selectSet(Number(e.target.value))}
+                    >
+                      {sets.map((s, i) => (
+                        <option key={i} value={i}>
+                          {s.name ? s.name : `Set ${i + 1}`} — {s.reels.length}{" "}
+                          reels
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="reelset-advanced">
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={() => setAutoSetOpen((value) => !value)}
+                    aria-expanded={autoSetOpen}
                   >
-                    {sets.map((s, i) => (
-                      <option key={i} value={i}>
-                        {s.name ? s.name : `Set ${i + 1}`} — {s.reels.length}{" "}
-                        reels
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+                    {autoSetOpen ? "▾" : "▸"} Advanced reelStrip mapping
+                  </button>
+                  {autoSetOpen && (
+                    <div className="reelset-rules">
+                      {sets.map((s, i) => (
+                        <div className="reelset-rule" key={i}>
+                          <strong className="reelset-rule-name">
+                            {s.name || `Set ${i + 1}`}
+                          </strong>
+                          <label className="db-field">
+                            <span className="db-label">Position (0-based)</span>
+                            <input
+                              className="select reelstrip-rows"
+                              type="number"
+                              min={0}
+                              value={setRules[i]?.position ?? ""}
+                              onChange={(e) =>
+                                setSetRules((prev) =>
+                                  prev.map((rule, j) =>
+                                    j === i
+                                      ? { ...rule, position: e.target.value }
+                                      : rule
+                                  )
+                                )
+                              }
+                            />
+                          </label>
+                          <label className="db-field">
+                            <span className="db-label">RNG range</span>
+                            <input
+                              className="select db-search"
+                              type="text"
+                              placeholder="e.g. 100-200"
+                              value={setRules[i]?.range ?? ""}
+                              onChange={(e) =>
+                                setSetRules((prev) =>
+                                  prev.map((rule, j) =>
+                                    j === i
+                                      ? { ...rule, range: e.target.value }
+                                      : rule
+                                  )
+                                )
+                              }
+                            />
+                          </label>
+                        </div>
+                      ))}
+                      <p className="muted small">
+                        On slot, the first matching range selects its reelStrip set.
+                        No match keeps the current selection.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
 
             {reels && (
