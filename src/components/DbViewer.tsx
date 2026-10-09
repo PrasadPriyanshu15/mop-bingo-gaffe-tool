@@ -653,7 +653,7 @@ interface Props {
   autoFindFacadeId?: number | null;
   /** reelStop positional filter to mirror on auto-find. */
   autoFindPattern?: string;
-  /** RNG-length bound (HPP) to mirror on auto-find. */
+  /** RNG-length bound to mirror on auto-find. */
   autoFindMaxRng?: string;
   /** Changes each time an auto-find is requested; triggers the lookup. */
   autoFindToken?: number;
@@ -783,7 +783,6 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
 
   const ready = status === "ready";
   const showFacade = facadeSel === "all";
-  const isType2 = openedType === "type2";
   const multiWin = wins.length > 1;
   const eachMode = mode === "each" && multiWin;
 
@@ -853,9 +852,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
     }
   }
 
-  /** Resolve the "RNG count" field into a length bound (Type 2 only). */
+  /** Resolve the "RNG count" field into a length bound. */
   function parseMaxRng(): { filter: RngLenFilter | null; error: boolean } {
-    if (!isType2) return { filter: null, error: false };
     const t = maxRng.trim();
     if (t === "") return { filter: null, error: false };
     const m = t.match(/^(\d+)\s*-\s*(\d+)$/);
@@ -1643,11 +1641,11 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
                 </div>
               )}
 
-              {isType2 && (
+              {openedType !== null && (
                 <label className="db-field">
                   <span className="db-label">
-                    RNG count (HPP only · single = exact length, range = in
-                    range, blank = no bound)
+                    RNG count (single = exact length, range = in range, blank =
+                    no bound)
                   </span>
                   <input
                     className="select"

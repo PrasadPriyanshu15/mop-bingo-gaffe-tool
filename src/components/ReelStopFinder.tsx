@@ -37,7 +37,7 @@ interface Props {
   autoFindFacadeId?: number | null;
   /** reelStop positional filter to mirror from the DB amount search. */
   autoFindPattern?: string;
-  /** RNG-length bound (HPP) to mirror from the DB amount search. */
+  /** RNG-length bound to mirror from the DB amount search. */
   autoFindMaxRng?: string;
   /** Changes each time an auto-find is requested; triggers the lookup. */
   autoFindToken?: number;
@@ -80,7 +80,7 @@ export default function ReelStopFinder({
   // type1 = RngValues on Presentation; type2 = RngValues in the Segment table.
   const [dbType, setDbType] = useState<DbType>("type1");
   // The schema of the currently-open DB (independent of the picker above, which
-  // only affects the next upload). Gates the RNG-length filter, which is Type-2 only.
+  // only affects the next upload).
   const [openedType, setOpenedType] = useState<DbType | null>(null);
 
   const [facades, setFacades] = useState<Facade[]>([]);
@@ -104,7 +104,7 @@ export default function ReelStopFinder({
   // Positional filter (Update 3). Narrows shown candidates live; also honored
   // by find() to pull DB matches beyond the per-award display cap.
   const [pattern, setPattern] = useState("");
-  // HPP (Type 2) only: bound the reconstructed RNG length. Blank = no bound; a
+  // Bound the RNG length. Blank = no bound; a
   // single "300" keeps candidates with <= 300 RNG values, a range "100-300" keeps
   // 100..300. Mirrors the DB amount search field of the same name.
   const [maxRng, setMaxRng] = useState("");
@@ -244,13 +244,12 @@ export default function ReelStopFinder({
     }
   }
 
-  // Parse the RNG-length field (Type 2 only), mirroring the DB amount search:
+  // Parse the RNG-length field, mirroring the DB amount search:
   // blank = no bound, "300" = <= 300, "100-300" = 100..300.
   function parseMaxRng(str: string): {
     filter: RngLenFilter | null;
     error: boolean;
   } {
-    if (openedType !== "type2") return { filter: null, error: false };
     const t = str.trim();
     if (t === "") return { filter: null, error: false };
     const m = t.match(/^(\d+)\s*-\s*(\d+)$/);
@@ -470,7 +469,7 @@ export default function ReelStopFinder({
               />
             </label>
 
-            {openedType === "type2" && (
+            {openedType !== null && (
               <label className="db-field">
                 <span className="db-label">RNG length (blank = any)</span>
                 <input
