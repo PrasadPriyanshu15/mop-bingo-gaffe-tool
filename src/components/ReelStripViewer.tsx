@@ -312,6 +312,8 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     } | null>(null);
     const [symCopied, setSymCopied] = useState<string | null>(null);
     const [symApplied, setSymApplied] = useState<string | null>(null);
+    const [symUsedKey, setSymUsedKey] = useState<string | null>(null);
+    const [symHighlightPos, setSymHighlightPos] = useState("");
     // Bumped on every new symbol search / cancel; a running scan bails when it
     // sees its id is stale.
     const symRunId = useRef(0);
@@ -718,6 +720,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       setSymSearching(true);
       setSymError(null);
       setSymResults(null);
+      setSymUsedKey(null);
       setSymCapped(false);
       setSymScanCapped(false);
       setSymProgress({ done: 0, total: 0, found: 0 });
@@ -941,7 +944,8 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       setFgSearchProgress(null);
     }
 
-    async function copySym(text: string) {
+    async function copySym(text: string, rowKey?: string) {
+      if (rowKey != null) setSymUsedKey(rowKey);
       try {
         await navigator.clipboard.writeText(text);
         setSymCopied(text);
@@ -951,7 +955,8 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       }
     }
 
-    function applySym(rs: number[], text: string) {
+    function applySym(rs: number[], text: string, rowKey?: string) {
+      if (rowKey != null) setSymUsedKey(rowKey);
       onApply(rs);
       setSymApplied(text);
       setTimeout(() => setSymApplied(null), 1200);
@@ -1109,7 +1114,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       requestAnimationFrame(() =>
         panelRef.current?.scrollIntoView({
           behavior: "smooth",
-          block: "nearest",
+          block: "start",
         })
       );
     }
@@ -1742,19 +1747,51 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                           {symCapped ? " (first 100)" : ""}
                           {symScanCapped && " (scan limit reached)"}:
                         </p>
+                        <div className="rng-pos-bar">
+                          <label htmlFor="sym-rng-pos-input">
+                            Highlight RNG position
+                          </label>
+                          <input
+                            id="sym-rng-pos-input"
+                            type="number"
+                            min={0}
+                            inputMode="numeric"
+                            placeholder="0-based index"
+                            value={symHighlightPos}
+                            onChange={(e) =>
+                              setSymHighlightPos(e.target.value)
+                            }
+                            className="rng-pos-input"
+                          />
+                          {symHighlightPos.trim() !== "" && (
+                            <button
+                              type="button"
+                              className="rng-pos-clear"
+                              onClick={() => setSymHighlightPos("")}
+                              title="Clear highlight"
+                            >
+                              clear
+                            </button>
+                          )}
+                        </div>
                         <div className="reelstop-list">
                           {symResults.map((m, i) => {
                             const text = `[${m.values.join(",")}]`;
-                            // Full RNG feeds copy/apply/slot; show only a few
-                            // leading values inline so the row stays compact.
-                            const preview =
-                              m.values.length > 8
-                                ? `[${m.values.slice(0, 8).join(",")}, …+${
-                                    m.values.length - 8
-                                  }]`
-                                : text;
+                            const rowKey = `${m.awardId}:${
+                              m.presentationId ?? "none"
+                            }:${i}`;
+                            const highlightPos =
+                              symHighlightPos.trim() === ""
+                                ? -1
+                                : Number.parseInt(symHighlightPos, 10);
                             return (
-                              <div key={i} className="reelstop sym-result">
+                              <div
+                                key={i}
+                                className={
+                                  "reelstop sym-result" +
+                                  (symUsedKey === rowKey ? " used" : "")
+                                }
+                              >
                                 <div className="sym-result-meta">
                                   <span
                                     className="reelstop-pid"
@@ -1777,16 +1814,28 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                                     </span>
                                   )}
                                 </div>
-                                <span
-                                  className="reelstop-vals"
-                                  title={text}
-                                >
-                                  {preview}
+                                <span className="reelstop-vals" title={text}>
+                                  [
+                                  {m.values.map((value, position) => (
+                                    <span key={position}>
+                                      {position > 0 ? "," : ""}
+                                      {position === highlightPos ? (
+                                        <span className="reelstop-val-hl">
+                                          {value}
+                                        </span>
+                                      ) : (
+                                        value
+                                      )}
+                                    </span>
+                                  ))}
+                                  ]
                                 </span>
                                 <button
                                   type="button"
                                   className="reelstop-btn reelstop-apply"
-                                  onClick={() => applySym(m.values, text)}
+                                  onClick={() =>
+                                    applySym(m.values, text, rowKey)
+                                  }
                                   title="Use in gaffe result"
                                 >
                                   {symApplied === text ? "✓" : "+"}
@@ -1794,7 +1843,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                                 <button
                                   type="button"
                                   className="reelstop-btn"
-                                  onClick={() => copySym(text)}
+                                  onClick={() => void copySym(text, rowKey)}
                                   title="Copy reelStops"
                                 >
                                   {symCopied === text ? "✓" : "copy"}
@@ -1802,9 +1851,10 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                                 <button
                                   type="button"
                                   className="reelstop-btn reelstop-slot"
-                                  onClick={() =>
+                                  onClick={() => {
+                                    setSymUsedKey(rowKey);
                                     loadReelStops(m.values, m.presentationId)
-                                  }
+                                  }}
                                   title="Land this RNG on the slot grid above"
                                 >
                                   slot
