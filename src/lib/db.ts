@@ -660,7 +660,7 @@ export async function findReelStopsMatching(
       scanCapped = true;
       break;
     }
-    const awardLimit = Math.min(perAwardCap, remaining);
+    const awardLimit = Math.min(perAwardCap, remaining, award.totalCount);
     const cands = await getReelStops(h, award, awardLimit);
     for (const c of cands) {
       scannedCandidates++;

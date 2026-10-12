@@ -741,6 +741,7 @@ export default function Home() {
                 ref={reelStripRef}
                 onLoadedChange={setReelStripLoaded}
                 onSearch={(filter) => dbSearchRef.current?.runWithFilter(filter)}
+                getDbFilters={() => dbSearchRef.current?.getFilters() ?? null}
                 dbHandle={dbHandle}
                 facades={dbFacades}
                 onApply={applyReelStops}

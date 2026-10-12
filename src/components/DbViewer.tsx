@@ -613,7 +613,12 @@ export interface DbViewerHandle {
   /** Current filter values + selected DB bet line, so a "create pattern" click
    *  can mirror them back into an auto-find. `facadeSel` is a DB facadeId as a
    *  string, or "all". */
-  getFilters: () => { pattern: string; maxRng: string; facadeSel: string };
+  getFilters: () => {
+    pattern: string;
+    maxRng: string;
+    facadeSel: string;
+    advanced: { pos: string; val: string }[];
+  };
 }
 
 interface Props {
@@ -1400,7 +1405,7 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
       );
     },
     getFilters() {
-      return { pattern, maxRng, facadeSel };
+      return { pattern, maxRng, facadeSel, advanced: advRules };
     },
   }));
 

@@ -17,6 +17,14 @@ import {
 } from "@/lib/parseReelStrips";
 import type { DbHandle, Facade, MatchedReelStop } from "@/lib/db";
 import { useCurrency } from "@/lib/CurrencyContext";
+import {
+  parsePattern,
+  patternIsActive,
+  parseRange,
+  matchesPattern,
+  matchesAdvanced,
+  type AdvancedRule,
+} from "@/lib/reelstop";
 
 /** Height of one symbol block, in px — used for the grid + payline math. */
 const CELL = 44;
@@ -24,8 +32,6 @@ const CELL = 44;
 const MIN_COL = 58;
 /** How many first reelStop positions physically land on the slot grid. */
 const SLOT_REELS = 5;
-/** Bound rare symbol searches so a large bet line cannot monopolize the UI. */
-const SYMBOL_SEARCH_SCAN_LIMIT = 20000;
 /** Threshold above which an RNG value is a "big value" — a SCAT / Empty_credit
  *  reveal that gets numbered 1st, 2nd, 3rd… The base-game preamble (~28-30
  *  one-to-three-digit reel stops) and the single-digit values sitting between
@@ -45,6 +51,13 @@ interface Props {
   onLoadedChange: (loaded: boolean) => void;
   /** Send the current offset-row positions to the DB amount search. */
   onSearch: (filter: string) => void;
+  /** Current DB-search filters (reelStop pattern, RNG count, advanced rules) so
+   *  the symbol search can narrow its candidates by them. */
+  getDbFilters?: () => {
+    pattern: string;
+    maxRng: string;
+    advanced: { pos: string; val: string }[];
+  } | null;
   /** Open outcomes DB — lets FREE GAME pull segment-2+ RNG for HPP candidates,
    *  and powers the symbol search. */
   dbHandle: DbHandle | null;
@@ -174,7 +187,7 @@ function freeSpinsFromRng(values: number[]): number[][] {
 
 const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
   function ReelStripViewer(
-    { onLoadedChange, onSearch, dbHandle, facades, onApply },
+    { onLoadedChange, onSearch, getDbFilters, dbHandle, facades, onApply },
     ref
   ) {
     const inputRef = useRef<HTMLInputElement>(null);
@@ -618,7 +631,49 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       // segment (later in the stream) searches that feature's landings, not the
       // base game's first values.
       const win = { rows, offset, start: slotStart };
+
+      // Honor the DB-search filters (reelStop pattern, RNG count, advanced
+      // rules). When they're all empty this stays a no-op and the symbol
+      // search runs over the whole bet line.
+      const dbFilters = getDbFilters?.() ?? null;
+      const pat = parsePattern(dbFilters?.pattern ?? "");
+      const patActive = patternIsActive(pat);
+      const advRules: AdvancedRule[] = [];
+      for (const r of dbFilters?.advanced ?? []) {
+        const pos = parseRange(r.pos);
+        const val = parseRange(r.val);
+        if (r.pos.trim() === "" && r.val.trim() === "") continue;
+        if (!pos || !val) {
+          setSymError(
+            "Advanced filter: position and value must each be a number or a range like 20-30."
+          );
+          return;
+        }
+        advRules.push({ pos, val });
+      }
+      let lenMin: number | null = null;
+      let lenMax: number | null = null;
+      const lenStr = (dbFilters?.maxRng ?? "").trim();
+      if (lenStr !== "") {
+        const m = lenStr.match(/^(\d+)\s*-\s*(\d+)$/);
+        if (m) {
+          lenMin = Math.min(Number(m[1]), Number(m[2]));
+          lenMax = Math.max(Number(m[1]), Number(m[2]));
+        } else if (/^\d+$/.test(lenStr)) {
+          lenMax = Number(lenStr);
+        } else {
+          setSymError("RNG count must be a positive number or range like 100-300.");
+          return;
+        }
+      }
+      const passesDbFilters = (values: number[]): boolean =>
+        (lenMin == null || values.length >= lenMin) &&
+        (lenMax == null || values.length <= lenMax) &&
+        (!patActive || matchesPattern(values, pat)) &&
+        matchesAdvanced(values, advRules);
+
       const predicate = (values: number[]): boolean => {
+        if (!passesDbFilters(values)) return false;
         if (exactCounts) {
           const counts = new Map<string, number>();
           for (let i = 0; i < reels.length; i++) {
@@ -674,7 +729,8 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
           predicate,
           {
             maxResults: 100,
-            maxScannedCandidates: SYMBOL_SEARCH_SCAN_LIMIT,
+            // Scan every presentation of every award — no per-award or total cap.
+            perAwardCap: Infinity,
             onProgress: (done, total, found) => {
               if (!stale()) setSymProgress({ done, total, found });
             },
@@ -1012,11 +1068,13 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       if (!targetReels) return;
       if (matchedSetIdx != null && matchedSetIdx !== setIdx) {
         setSetIdx(matchedSetIdx);
-        setSymSel(targetReels.map(() => null));
-        setSymAnywhereSyms([""]);
-        setSymResults(null);
-        setSymError(null);
-        setSymProgress(null);
+        // Keep the searched results and chosen symbols when slotting a
+        // candidate; only drop a per-reel choice the new set's reel lacks.
+        setSymSel((prev) =>
+          targetReels.map((r, i) =>
+            prev[i] && r.symbols.includes(prev[i]!) ? prev[i] : null
+          )
+        );
       }
       // A fresh candidate: remember its presentation for FREE GAME auto-load
       // and clear any previous free-game paste/notes so it re-fills cleanly.
@@ -1675,9 +1733,6 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                       <p className="muted small">
                         No RNG in this bet line shows those symbols in the
                         visible grid.
-                        {symScanCapped && (
-                          <> Search stopped after scanning the first {SYMBOL_SEARCH_SCAN_LIMIT.toLocaleString()} candidates.</>
-                        )}
                       </p>
                     ) : (
                       <>
