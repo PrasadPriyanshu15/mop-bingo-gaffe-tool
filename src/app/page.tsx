@@ -23,6 +23,7 @@ import PaytableIssues from "@/components/PaytableIssues";
 import WebsocketCompare from "@/components/WebsocketCompare";
 import CreditToCurrency from "@/components/CreditToCurrency";
 import CollapsibleSection from "@/components/CollapsibleSection";
+import ConfigPanel from "@/components/ConfigPanel";
 import { useCurrency } from "@/lib/CurrencyContext";
 import { validatePaytable } from "@/lib/validatePaytable";
 import type { DbHandle, Facade } from "@/lib/db";
@@ -68,6 +69,18 @@ export default function Home() {
   const [dbFacades, setDbFacades] = useState<Facade[]>([]);
   // Coordination for the reelStrip viewer <-> result rows <-> DB amount search.
   const [reelStripLoaded, setReelStripLoaded] = useState(false);
+  // Config section values — entered there, consumed by the DB and reelStrip
+  // viewers (both edit the same state, so they always agree).
+  const [advRules, setAdvRules] = useState<{ pos: string; val: string }[]>([
+    { pos: "", val: "" },
+  ]);
+  const [reelSetNames, setReelSetNames] = useState<string[]>([]);
+  const [setRules, setSetRules] = useState<{ position: string; range: string }[]>(
+    []
+  );
+  const [reelRows, setReelRows] = useState(3);
+  const [reelOffset, setReelOffset] = useState(0);
+  const [slotStart, setSlotStart] = useState(0);
   const reelStripRef = useRef<ReelStripHandle>(null);
   const dbSearchRef = useRef<DbViewerHandle>(null);
   // Bumped when a "create pattern" click in the DB amount search should drive the
@@ -699,11 +712,32 @@ export default function Home() {
           </div>
         </CollapsibleSection>
 
-        {/* ── Section 4 · DB & ReelStrip Viewer ──────────────────────── */}
+        {/* ── Section 4 · Config ─────────────────────────────────────── */}
+        {/* Only once both the DB and the main reelStrip file are loaded.
+            keepMounted so entered values survive a collapse. */}
+        {dbHandle && reelStripLoaded && (
+          <CollapsibleSection title="4 · Config" keepMounted defaultOpen={false}>
+            <ConfigPanel
+              reelSetNames={reelSetNames}
+              setRules={setRules}
+              setSetRules={setSetRules}
+              rows={reelRows}
+              setRows={setReelRows}
+              offset={reelOffset}
+              setOffset={setReelOffset}
+              slotStart={slotStart}
+              setSlotStart={setSlotStart}
+              advRules={advRules}
+              setAdvRules={setAdvRules}
+            />
+          </CollapsibleSection>
+        )}
+
+        {/* ── Section 5 · DB & ReelStrip Viewer ──────────────────────── */}
         {/* keepMounted: the DB viewer / reelStrip viewer own their loaded
             database and search results in local state — hide on collapse rather
             than unmount so that state survives until the tab is closed. */}
-        <CollapsibleSection title="4 · DB & ReelStrip Viewer" keepMounted defaultOpen={false}>
+        <CollapsibleSection title="5 · DB & ReelStrip Viewer" keepMounted defaultOpen={false}>
           <div className="db-section-cols">
             {/* All DB inputs + results (upload, bet line, amount, filters). The
                 DB explorer is independent of the XML: it can open a .db and run
@@ -733,6 +767,8 @@ export default function Home() {
               autoFindPattern={autoFindReel?.pattern ?? ""}
               autoFindMaxRng={autoFindReel?.maxRng ?? ""}
               autoFindToken={autoFindReel?.token ?? 0}
+              advRules={advRules}
+              setAdvRules={setAdvRules}
             />
 
             {/* reelStrip viewer slot grid */}
@@ -740,6 +776,19 @@ export default function Home() {
               <ReelStripViewer
                 ref={reelStripRef}
                 onLoadedChange={setReelStripLoaded}
+                onSetsLoaded={(names) => {
+                  setReelSetNames(names);
+                  setSetRules(names.map(() => ({ position: "", range: "" })));
+                  setSlotStart(0);
+                }}
+                setRules={setRules}
+                setSetRules={setSetRules}
+                rows={reelRows}
+                setRows={setReelRows}
+                offset={reelOffset}
+                setOffset={setReelOffset}
+                slotStart={slotStart}
+                setSlotStart={setSlotStart}
                 onSearch={(filter) => dbSearchRef.current?.runWithFilter(filter)}
                 getDbFilters={() => dbSearchRef.current?.getFilters() ?? null}
                 dbHandle={dbHandle}

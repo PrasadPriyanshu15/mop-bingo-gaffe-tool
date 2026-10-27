@@ -6,6 +6,8 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  type Dispatch,
+  type SetStateAction,
 } from "react";
 import type { DbHandle, DbType, Facade, RngLenFilter } from "@/lib/db";
 import type { MatchingPattern, Pattern, Paytable, Paytable59 } from "@/lib/types";
@@ -662,6 +664,10 @@ interface Props {
   autoFindMaxRng?: string;
   /** Changes each time an auto-find is requested; triggers the lookup. */
   autoFindToken?: number;
+  /** Advanced filter rows — owned by the page so the Config section can edit
+   *  the same list. */
+  advRules: { pos: string; val: string }[];
+  setAdvRules: Dispatch<SetStateAction<{ pos: string; val: string }[]>>;
 }
 
 /**
@@ -691,6 +697,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
     autoFindPattern,
     autoFindMaxRng,
     autoFindToken,
+    advRules,
+    setAdvRules,
   },
   ref
 ) {
@@ -727,9 +735,6 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
   // range — and a value — or value range — to search for there ("positions 20-30
   // hold any value 500-600"). Rows are ANDed; blank rows are ignored.
   const [advOpen, setAdvOpen] = useState(false);
-  const [advRules, setAdvRules] = useState<{ pos: string; val: string }[]>([
-    { pos: "", val: "" },
-  ]);
 
   function setAdvRule(i: number, key: "pos" | "val", value: string) {
     setAdvRules((prev) =>

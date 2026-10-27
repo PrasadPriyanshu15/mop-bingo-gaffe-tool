@@ -7,6 +7,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
+  type SetStateAction,
 } from "react";
 import {
   parseReelStrips,
@@ -66,6 +68,19 @@ interface Props {
   /** Push a chosen reelStop into the main generated gaffe output (symbol-search
    *  results' "+" button). */
   onApply: (reelStops: number[]) => void;
+  /** Report the set names of the loaded file (empty on failure) so the Config
+   *  section can list them. */
+  onSetsLoaded: (names: string[]) => void;
+  /** Config values owned by the page so the Config section edits the same
+   *  state: reelset position/range rules, grid rows, landing offset, RNG start. */
+  setRules: { position: string; range: string }[];
+  setSetRules: Dispatch<SetStateAction<{ position: string; range: string }[]>>;
+  rows: number;
+  setRows: Dispatch<SetStateAction<number>>;
+  offset: number;
+  setOffset: Dispatch<SetStateAction<number>>;
+  slotStart: number;
+  setSlotStart: Dispatch<SetStateAction<number>>;
 }
 
 const wrap = (n: number, len: number) => ((n % len) + len) % len;
@@ -187,7 +202,23 @@ function freeSpinsFromRng(values: number[]): number[][] {
 
 const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
   function ReelStripViewer(
-    { onLoadedChange, onSearch, getDbFilters, dbHandle, facades, onApply },
+    {
+      onLoadedChange,
+      onSearch,
+      getDbFilters,
+      dbHandle,
+      facades,
+      onApply,
+      onSetsLoaded,
+      setRules,
+      setSetRules,
+      rows,
+      setRows,
+      offset,
+      setOffset,
+      slotStart,
+      setSlotStart,
+    },
     ref
   ) {
     const inputRef = useRef<HTMLInputElement>(null);
@@ -206,19 +237,16 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     const [sets, setSets] = useState<ReelStripSet[] | null>(null);
     const [setIdx, setSetIdx] = useState(0);
     const [autoSetOpen, setAutoSetOpen] = useState(false);
-    const [setRules, setSetRules] = useState<{ position: string; range: string }[]>([]);
     const reels = useMemo(
       () => (sets ? sets[setIdx]?.reels ?? null : null),
       [sets, setIdx]
     );
     const [error, setError] = useState<string | null>(null);
-    const [rows, setRows] = useState(3);
-    const [offset, setOffset] = useState(0);
-    // Which position in the RNG stream the slot's reel stops start from. The
-    // slot shows SLOT_REELS consecutive values beginning here (default 0 = the
-    // start of the stream). Lets a candidate whose base-game stops are preceded
-    // by preamble values in the RNG land the correct 5 values on the grid.
-    const [slotStart, setSlotStart] = useState(0);
+    // rows / offset / slotStart come from props (shared with the Config section).
+    // slotStart: which position in the RNG stream the slot's reel stops start
+    // from. The slot shows SLOT_REELS consecutive values beginning here (default
+    // 0 = the start of the stream). Lets a candidate whose base-game stops are
+    // preceded by preamble values in the RNG land the correct 5 values on the grid.
     // Index at the offset (landing) row, per reel.
     const [positions, setPositions] = useState<number[]>([]);
     // Raw RNG values (weighted strips), preserved so SEARCH matches the DB on
@@ -1007,6 +1035,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         setFileName(file.name);
         setOpen(true);
         onLoadedChange(true);
+        onSetsLoaded(grouped.map((s, i) => s.name || `Set ${i + 1}`));
         requestScroll(pos);
         // A new strip changes the symbol set — clear any symbol search state.
         setSymSel(first.map(() => null));
@@ -1021,6 +1050,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
         setPositions([]);
         setRawValues([]);
         onLoadedChange(false);
+        onSetsLoaded([]);
         setError(
           e instanceof Error
             ? e.message
@@ -1167,6 +1197,14 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
     function changeSlotStart(v: number) {
       setSlotStart(Math.max(0, Math.floor(Number.isFinite(v) ? v : 0)));
     }
+
+    // The Config section can change rows / offset without going through
+    // changeRows / changeOffset, so re-land the grid when either moves.
+    useEffect(() => {
+      if (!reels) return;
+      requestScroll(positions);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rows, offset]);
 
     // Re-land the grid whenever the RNG window moves.
     useEffect(() => {

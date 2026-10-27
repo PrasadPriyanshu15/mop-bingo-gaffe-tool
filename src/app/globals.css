@@ -163,7 +163,7 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
 }
 
-/* Section 4: the DB explorer (wide) beside the reelStrip viewer (narrow). */
+/* Section 5: the DB explorer (wide) beside the reelStrip viewer (narrow). */
 .db-section-cols {
   display: grid;
   grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
