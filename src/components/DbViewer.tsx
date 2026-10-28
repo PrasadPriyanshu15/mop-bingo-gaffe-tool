@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import {
   forwardRef,
   useEffect,
@@ -668,6 +669,9 @@ interface Props {
    *  the same list. */
   advRules: { pos: string; val: string }[];
   setAdvRules: Dispatch<SetStateAction<{ pos: string; val: string }[]>>;
+  /** Slot inside the Config section where the DB structure toggle + .db upload
+   *  are rendered (portaled). Inline fallback until the slot mounts. */
+  uploadSlot?: HTMLElement | null;
 }
 
 /**
@@ -699,6 +703,7 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
     autoFindToken,
     advRules,
     setAdvRules,
+    uploadSlot,
   },
   ref
 ) {
@@ -1424,13 +1429,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
   const hasResults =
     !!patternMatches || !!view || (eachMode && !!sections) || !!progress;
 
-  return (
-    <div className="panel db-viewer" ref={panelRef}>
-      <div className="panel-title">DB search &amp; reelStops</div>
-
-      <div className="db-viewer-cols">
-        {/* ── Inputs column ─────────────────────────────────────────── */}
-        <div className="db-inputs">
+  const uploadUi = (
+    <>
           <div className="db-type-row">
             <span className="db-label">DB structure</span>
             <div className="seg">
@@ -1477,6 +1477,17 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
             />
           </div>
           {fileName && <span className="loaded-name">{fileName}</span>}
+    </>
+  );
+
+  return (
+    <div className="panel db-viewer" ref={panelRef}>
+      {uploadSlot ? createPortal(uploadUi, uploadSlot) : uploadUi}
+      <div className="panel-title">DB search &amp; reelStops</div>
+
+      <div className="db-viewer-cols">
+        {/* ── Inputs column ─────────────────────────────────────────── */}
+        <div className="db-inputs">
 
           {!ready && (
             <p className="muted small">

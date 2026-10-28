@@ -81,6 +81,10 @@ export default function Home() {
   const [reelRows, setReelRows] = useState(3);
   const [reelOffset, setReelOffset] = useState(0);
   const [slotStart, setSlotStart] = useState(0);
+  // Slots in the Config section that the viewers portal their uploads into.
+  const [dbSlot, setDbSlot] = useState<HTMLElement | null>(null);
+  const [reelSlot, setReelSlot] = useState<HTMLElement | null>(null);
+  const [fgSlot, setFgSlot] = useState<HTMLElement | null>(null);
   const reelStripRef = useRef<ReelStripHandle>(null);
   const dbSearchRef = useRef<DbViewerHandle>(null);
   // Bumped when a "create pattern" click in the DB amount search should drive the
@@ -713,14 +717,11 @@ export default function Home() {
         </CollapsibleSection>
 
         {/* ── Section 4 · Config ─────────────────────────────────────── */}
-        {/* Only once both the DB and the main reelStrip file are loaded.
+        {/* Holds the DB / reelStrip file uploads, so always shown.
             keepMounted so entered values survive a collapse. */}
-        {dbHandle && reelStripLoaded && (
+        {(
           <CollapsibleSection title="4 · Config" keepMounted defaultOpen={false}>
             <ConfigPanel
-              reelSetNames={reelSetNames}
-              setRules={setRules}
-              setSetRules={setSetRules}
               rows={reelRows}
               setRows={setReelRows}
               offset={reelOffset}
@@ -729,6 +730,9 @@ export default function Home() {
               setSlotStart={setSlotStart}
               advRules={advRules}
               setAdvRules={setAdvRules}
+              dbSlotRef={setDbSlot}
+              reelSlotRef={setReelSlot}
+              fgSlotRef={setFgSlot}
             />
           </CollapsibleSection>
         )}
@@ -769,10 +773,11 @@ export default function Home() {
               autoFindToken={autoFindReel?.token ?? 0}
               advRules={advRules}
               setAdvRules={setAdvRules}
+              uploadSlot={dbSlot}
             />
 
             {/* reelStrip viewer slot grid */}
-            {dbHandle && (
+            {(
               <ReelStripViewer
                 ref={reelStripRef}
                 onLoadedChange={setReelStripLoaded}
@@ -794,6 +799,8 @@ export default function Home() {
                 dbHandle={dbHandle}
                 facades={dbFacades}
                 onApply={applyReelStops}
+                uploadSlot={reelSlot}
+                fgUploadSlot={fgSlot}
               />
             )}
           </div>

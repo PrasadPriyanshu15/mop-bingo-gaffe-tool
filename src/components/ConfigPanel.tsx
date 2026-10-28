@@ -2,14 +2,9 @@
 
 import type { Dispatch, SetStateAction } from "react";
 
-type SetRule = { position: string; range: string };
 type AdvRule = { pos: string; val: string };
 
 interface Props {
-  /** Set names from the main reelStrip file. */
-  reelSetNames: string[];
-  setRules: SetRule[];
-  setSetRules: Dispatch<SetStateAction<SetRule[]>>;
   rows: number;
   setRows: Dispatch<SetStateAction<number>>;
   offset: number;
@@ -18,17 +13,19 @@ interface Props {
   setSlotStart: Dispatch<SetStateAction<number>>;
   advRules: AdvRule[];
   setAdvRules: Dispatch<SetStateAction<AdvRule[]>>;
+  /** Callback refs for the slots the DB / reelStrip viewers portal their file
+   *  uploads into. */
+  dbSlotRef: (el: HTMLDivElement | null) => void;
+  reelSlotRef: (el: HTMLDivElement | null) => void;
+  fgSlotRef: (el: HTMLDivElement | null) => void;
 }
 
 /**
- * Config page: the single place to enter the filter data used by the DB and
- * reelStrip viewer sections. It only edits state owned by the page — the
+ * Config page: the single place to upload the DB / reelStrip files and enter
+ * the filter data used by the DB and reelStrip viewer sections. It only edits state owned by the page — the
  * viewers read the same values, so nothing here searches or loads anything.
  */
 export default function ConfigPanel({
-  reelSetNames,
-  setRules,
-  setSetRules,
   rows,
   setRows,
   offset,
@@ -37,6 +34,9 @@ export default function ConfigPanel({
   setSlotStart,
   advRules,
   setAdvRules,
+  dbSlotRef,
+  reelSlotRef,
+  fgSlotRef,
 }: Props) {
   function changeRows(v: number) {
     const n = Math.max(1, Math.min(50, Math.floor(v || 1)));
@@ -59,57 +59,11 @@ export default function ConfigPanel({
   }
 
   return (
-    <div className="panel">
-      <h3 className="db-label">reelStrip set mapping</h3>
-      <div className="reelset-rules">
-        {reelSetNames.map((name, i) => (
-          <div className="reelset-rule" key={i}>
-            <strong className="reelset-rule-name">{name}</strong>
-            <label className="db-field">
-              <span className="db-label">Position (0-based)</span>
-              <input
-                className="select reelstrip-rows"
-                type="number"
-                min={0}
-                value={setRules[i]?.position ?? ""}
-                onChange={(e) =>
-                  setSetRules((prev) =>
-                    reelSetNames.map((_, j) => {
-                      const rule = prev[j] ?? { position: "", range: "" };
-                      return j === i
-                        ? { ...rule, position: e.target.value }
-                        : rule;
-                    })
-                  )
-                }
-              />
-            </label>
-            <label className="db-field">
-              <span className="db-label">RNG range</span>
-              <input
-                className="select db-search"
-                type="text"
-                placeholder="e.g. 100-200"
-                value={setRules[i]?.range ?? ""}
-                onChange={(e) =>
-                  setSetRules((prev) =>
-                    reelSetNames.map((_, j) => {
-                      const rule = prev[j] ?? { position: "", range: "" };
-                      return j === i
-                        ? { ...rule, range: e.target.value }
-                        : rule;
-                    })
-                  )
-                }
-              />
-            </label>
-          </div>
-        ))}
-        <p className="muted small">
-          On slot, the first matching range selects its reelStrip set. No match
-          keeps the current selection.
-        </p>
-      </div>
+    <div className="section-grid grid-3">
+      {/* 1 · DB + viewer inputs + advanced filter */}
+      <div className="panel">
+        <div className="panel-title">DB search</div>
+        <div ref={dbSlotRef} />
 
       <h3 className="db-label">reelStrip viewer</h3>
       <div className="db-controls">
@@ -202,6 +156,19 @@ export default function ConfigPanel({
         >
           + rule
         </button>
+      </div>
+      </div>
+
+      {/* 2 · main / base-game reelStrip */}
+      <div className="panel">
+        <div className="panel-title">Main reelStrip</div>
+        <div ref={reelSlotRef} />
+      </div>
+
+      {/* 3 · feature-game reelStrip */}
+      <div className="panel">
+        <div className="panel-title">Feature reelStrip</div>
+        <div ref={fgSlotRef} />
       </div>
     </div>
   );

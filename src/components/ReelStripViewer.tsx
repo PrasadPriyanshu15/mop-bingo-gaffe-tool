@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import {
   forwardRef,
   useEffect,
@@ -81,6 +82,10 @@ interface Props {
   setOffset: Dispatch<SetStateAction<number>>;
   slotStart: number;
   setSlotStart: Dispatch<SetStateAction<number>>;
+  /** Slots inside the Config section where the main / free-game reelStrip file
+   *  uploads are rendered (portaled). Inline fallback until the slot mounts. */
+  uploadSlot?: HTMLElement | null;
+  fgUploadSlot?: HTMLElement | null;
 }
 
 const wrap = (n: number, len: number) => ((n % len) + len) % len;
@@ -218,6 +223,8 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       setOffset,
       slotStart,
       setSlotStart,
+      uploadSlot,
+      fgUploadSlot,
     },
     ref
   ) {
@@ -1281,65 +1288,55 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       []
     );
 
-    return (
-      <div className="panel" ref={panelRef}>
+    const mainUpload = (
+      <div className="upload-row">
         <button
           type="button"
-          className="panel-title panel-title-toggle"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
+          className="btn"
+          onClick={() => inputRef.current?.click()}
         >
-          <span>{open ? "▾" : "▸"} reelStrip viewer</span>
-          <span className="muted small">slot grid</span>
+          Choose reelStrip .xml / .json…
         </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xml,.json,text/xml,application/xml,application/json"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleFile(f);
+            e.target.value = "";
+          }}
+        />
+        {fileName && <span className="loaded-name">{fileName}</span>}
+      </div>
+    );
+    const fgUpload = (
+      <div className="upload-row">
+        <button
+          type="button"
+          className="btn"
+          onClick={() => fgInputRef.current?.click()}
+        >
+          Choose free-game reels .xml / .json…
+        </button>
+        <input
+          ref={fgInputRef}
+          type="file"
+          accept=".xml,.json,text/xml,application/xml,application/json"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleFgFile(f);
+            e.target.value = "";
+          }}
+        />
+        {fgFileName && <span className="loaded-name">{fgFileName}</span>}
+      </div>
+    );
 
-        {open && (
-          <div className="reelstrip">
-            <div className="upload-row">
-              <button
-                type="button"
-                className="btn"
-                onClick={() => inputRef.current?.click()}
-              >
-                Choose reelStrip .xml / .json…
-              </button>
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".xml,.json,text/xml,application/xml,application/json"
-                hidden
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void handleFile(f);
-                  e.target.value = "";
-                }}
-              />
-              {fileName && <span className="loaded-name">{fileName}</span>}
-            </div>
-
-            {error && <p className="error">{error}</p>}
-
-            {sets && sets.length > 1 && (
-              <>
-                <div className="db-controls">
-                  <label className="db-field db-field-grow">
-                    <span className="db-label">
-                      reelStrip set ({sets.length} in file)
-                    </span>
-                    <select
-                      className="select"
-                      value={setIdx}
-                      onChange={(e) => selectSet(Number(e.target.value))}
-                    >
-                      {sets.map((s, i) => (
-                        <option key={i} value={i}>
-                          {s.name ? s.name : `Set ${i + 1}`} — {s.reels.length}{" "}
-                          reels
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
+    const mainAdvUi = sets && sets.length > 1 && (
+      <>
                 <div className="reelset-advanced">
                   <button
                     type="button"
@@ -1400,6 +1397,236 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                       </p>
                     </div>
                   )}
+                </div>
+      </>
+    );
+
+    const fgConfigUi = fgReels && (
+      <>
+                    {fgReels && (
+                      <label
+                        className="free-game-arm"
+                        title="For games whose free-game symbols are weighted (not plain 0-99 direct stops). Uses the same cumulative-weight mapping as the main reelStrip viewer, driven by a feature interval and a reelStops position instead of auto-detected 5-value runs."
+                      >
+                        <input
+                          type="checkbox"
+                          checked={fgCustomMode}
+                          onChange={(e) => setFgCustomMode(e.target.checked)}
+                        />
+                        Custom (weighted symbols)
+                      </label>
+                    )}
+        {(fgCustomMode || fgSets.length > 0) && (
+          <>
+                        <div className="db-controls">
+                          <div className="db-field">
+                            <span className="db-label">Reels (columns)</span>
+                            <div className="db-amount">{fgReels.length}</div>
+                          </div>
+                          <label className="db-field">
+                            <span className="db-label">Rows</span>
+                            <input
+                              className="select reelstrip-rows"
+                              type="number"
+                              min={1}
+                              max={50}
+                              value={fgRows}
+                              onChange={(e) => {
+                                const n = Math.max(
+                                  1,
+                                  Math.min(50, Math.floor(Number(e.target.value) || 1))
+                                );
+                                setFgRows(n);
+                                if (fgOffset > n - 1) setFgOffset(n - 1);
+                              }}
+                            />
+                          </label>
+                          <label className="db-field">
+                            <span className="db-label">Offset (landing row)</span>
+                            <select
+                              className="select"
+                              value={fgOffset}
+                              onChange={(e) => setFgOffset(Number(e.target.value))}
+                            >
+                              {Array.from({ length: fgRows }, (_, i) => i).map(
+                                (i) => (
+                                  <option key={i} value={i}>
+                                    {i}
+                                  </option>
+                                )
+                              )}
+                            </select>
+                          </label>
+                        </div>
+            {fgCustomMode && (
+              <>
+                            <div className="db-controls">
+                              <label className="db-field">
+                                <span className="db-label">
+                                  Feature starts from
+                                </span>
+                                <input
+                                  className="select reelstrip-rows"
+                                  type="number"
+                                  min={0}
+                                  value={fgFeatureStart}
+                                  onChange={(e) =>
+                                    setFgFeatureStart(
+                                      Math.max(0, Math.floor(Number(e.target.value) || 0))
+                                    )
+                                  }
+                                  title="0-based position in the pasted RNG where the 1st free spin's interval starts"
+                                />
+                              </label>
+                              <label className="db-field">
+                                <span className="db-label">
+                                  Feature ends at
+                                </span>
+                                <input
+                                  className="select reelstrip-rows"
+                                  type="number"
+                                  min={0}
+                                  value={fgFeatureEnd}
+                                  onChange={(e) =>
+                                    setFgFeatureEnd(
+                                      Math.max(0, Math.floor(Number(e.target.value) || 0))
+                                    )
+                                  }
+                                  title="0-based position (inclusive) where the 1st free spin's interval ends — sets the interval length reused for every later spin"
+                                />
+                              </label>
+                              <label className="db-field">
+                                <span className="db-label">
+                                  reelStops starts from
+                                </span>
+                                <input
+                                  className="select reelstrip-rows"
+                                  type="number"
+                                  min={0}
+                                  value={fgReelStopsStart}
+                                  onChange={(e) =>
+                                    setFgReelStopsStart(
+                                      Math.max(0, Math.floor(Number(e.target.value) || 0))
+                                    )
+                                  }
+                                  title="0-based position in the pasted RNG where the 1st spin's reelStops (consecutive values, one per reel) start"
+                                />
+                              </label>
+                            </div>
+                            {fgReelSets && fgReelSets.length > 1 && (
+                              <div className="reelset-advanced">
+                                <button
+                                  type="button"
+                                  className="btn btn-small"
+                                  onClick={() =>
+                                    setFgAutoSetOpen((value) => !value)
+                                  }
+                                  aria-expanded={fgAutoSetOpen}
+                                >
+                                  {fgAutoSetOpen ? "▾" : "▸"} Advanced reelStrip mapping
+                                </button>
+                                {fgAutoSetOpen && (
+                                  <div className="reelset-rules">
+                                    {fgReelSets.map((set, i) => (
+                                      <div className="reelset-rule" key={i}>
+                                        <strong className="reelset-rule-name">
+                                          {set.name || `Set ${i + 1}`}
+                                        </strong>
+                                        <label className="db-field">
+                                          <span className="db-label">
+                                            Position (0-based)
+                                          </span>
+                                          <input
+                                            className="select reelstrip-rows"
+                                            type="number"
+                                            min={0}
+                                            value={fgSetRules[i]?.position ?? ""}
+                                            onChange={(e) =>
+                                              setFgSetRules((prev) =>
+                                                prev.map((rule, j) =>
+                                                  j === i
+                                                    ? { ...rule, position: e.target.value }
+                                                    : rule
+                                                )
+                                              )
+                                            }
+                                          />
+                                        </label>
+                                        <label className="db-field">
+                                          <span className="db-label">RNG range</span>
+                                          <input
+                                            className="select db-search"
+                                            type="text"
+                                            placeholder="e.g. 100-200"
+                                            value={fgSetRules[i]?.range ?? ""}
+                                            onChange={(e) =>
+                                              setFgSetRules((prev) =>
+                                                prev.map((rule, j) =>
+                                                  j === i
+                                                    ? { ...rule, range: e.target.value }
+                                                    : rule
+                                                )
+                                              )
+                                            }
+                                          />
+                                        </label>
+                                      </div>
+                                    ))}
+                                    <p className="muted small">
+                                      For each spin, the first matching range at
+                                      the given position in its feature interval
+                                      selects the reelStrip set. No match uses
+                                      the selected default set.
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+              </>
+            )}
+          </>
+        )}
+      </>
+    );
+
+    return (
+      <div className="panel" ref={panelRef}>
+        {uploadSlot && createPortal(<>{mainUpload}{mainAdvUi}</>, uploadSlot)}
+        {fgUploadSlot && createPortal(<>{fgUpload}{fgConfigUi}</>, fgUploadSlot)}
+        <button
+          type="button"
+          className="panel-title panel-title-toggle"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          <span>{open ? "▾" : "▸"} reelStrip viewer</span>
+          <span className="muted small">slot grid</span>
+        </button>
+
+        {open && (
+          <div className="reelstrip">
+            {error && <p className="error">{error}</p>}
+
+            {sets && sets.length > 1 && (
+              <>
+                <div className="db-controls">
+                  <label className="db-field db-field-grow">
+                    <span className="db-label">
+                      reelStrip set ({sets.length} in file)
+                    </span>
+                    <select
+                      className="select"
+                      value={setIdx}
+                      onChange={(e) => selectSet(Number(e.target.value))}
+                    >
+                      {sets.map((s, i) => (
+                        <option key={i} value={i}>
+                          {s.name ? s.name : `Set ${i + 1}`} — {s.reels.length}{" "}
+                          reels
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               </>
             )}
@@ -2015,30 +2242,6 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                       </div>
                     )}
 
-                    <div className="upload-row">
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => fgInputRef.current?.click()}
-                      >
-                        Choose free-game reels .xml / .json…
-                      </button>
-                      <input
-                        ref={fgInputRef}
-                        type="file"
-                        accept=".xml,.json,text/xml,application/xml,application/json"
-                        hidden
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) void handleFgFile(f);
-                          e.target.value = "";
-                        }}
-                      />
-                      {fgFileName && (
-                        <span className="loaded-name">{fgFileName}</span>
-                      )}
-                    </div>
-
                     {fgError && <p className="error">{fgError}</p>}
 
                     {fgReelSets && fgReelSets.length > 1 && (
@@ -2064,20 +2267,6 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                           </select>
                         </label>
                       </div>
-                    )}
-
-                    {fgReels && (
-                      <label
-                        className="free-game-arm"
-                        title="For games whose free-game symbols are weighted (not plain 0-99 direct stops). Uses the same cumulative-weight mapping as the main reelStrip viewer, driven by a feature interval and a reelStops position instead of auto-detected 5-value runs."
-                      >
-                        <input
-                          type="checkbox"
-                          checked={fgCustomMode}
-                          onChange={(e) => setFgCustomMode(e.target.checked)}
-                        />
-                        Custom (weighted symbols)
-                      </label>
                     )}
 
                     <div className="sym-search fg-symbol-search">
@@ -2519,173 +2708,8 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
 
                     {fgReels && (fgCustomMode || fgSets.length > 0) && (
                       <>
-                        <div className="db-controls">
-                          <div className="db-field">
-                            <span className="db-label">Reels (columns)</span>
-                            <div className="db-amount">{fgReels.length}</div>
-                          </div>
-                          <label className="db-field">
-                            <span className="db-label">Rows</span>
-                            <input
-                              className="select reelstrip-rows"
-                              type="number"
-                              min={1}
-                              max={50}
-                              value={fgRows}
-                              onChange={(e) => {
-                                const n = Math.max(
-                                  1,
-                                  Math.min(50, Math.floor(Number(e.target.value) || 1))
-                                );
-                                setFgRows(n);
-                                if (fgOffset > n - 1) setFgOffset(n - 1);
-                              }}
-                            />
-                          </label>
-                          <label className="db-field">
-                            <span className="db-label">Offset (landing row)</span>
-                            <select
-                              className="select"
-                              value={fgOffset}
-                              onChange={(e) => setFgOffset(Number(e.target.value))}
-                            >
-                              {Array.from({ length: fgRows }, (_, i) => i).map(
-                                (i) => (
-                                  <option key={i} value={i}>
-                                    {i}
-                                  </option>
-                                )
-                              )}
-                            </select>
-                          </label>
-                        </div>
-
                         {fgCustomMode ? (
                           <>
-                            <div className="db-controls">
-                              <label className="db-field">
-                                <span className="db-label">
-                                  Feature starts from
-                                </span>
-                                <input
-                                  className="select reelstrip-rows"
-                                  type="number"
-                                  min={0}
-                                  value={fgFeatureStart}
-                                  onChange={(e) =>
-                                    setFgFeatureStart(
-                                      Math.max(0, Math.floor(Number(e.target.value) || 0))
-                                    )
-                                  }
-                                  title="0-based position in the pasted RNG where the 1st free spin's interval starts"
-                                />
-                              </label>
-                              <label className="db-field">
-                                <span className="db-label">
-                                  Feature ends at
-                                </span>
-                                <input
-                                  className="select reelstrip-rows"
-                                  type="number"
-                                  min={0}
-                                  value={fgFeatureEnd}
-                                  onChange={(e) =>
-                                    setFgFeatureEnd(
-                                      Math.max(0, Math.floor(Number(e.target.value) || 0))
-                                    )
-                                  }
-                                  title="0-based position (inclusive) where the 1st free spin's interval ends — sets the interval length reused for every later spin"
-                                />
-                              </label>
-                              <label className="db-field">
-                                <span className="db-label">
-                                  reelStops starts from
-                                </span>
-                                <input
-                                  className="select reelstrip-rows"
-                                  type="number"
-                                  min={0}
-                                  value={fgReelStopsStart}
-                                  onChange={(e) =>
-                                    setFgReelStopsStart(
-                                      Math.max(0, Math.floor(Number(e.target.value) || 0))
-                                    )
-                                  }
-                                  title="0-based position in the pasted RNG where the 1st spin's reelStops (consecutive values, one per reel) start"
-                                />
-                              </label>
-                            </div>
-
-                            {fgReelSets && fgReelSets.length > 1 && (
-                              <div className="reelset-advanced">
-                                <button
-                                  type="button"
-                                  className="btn btn-small"
-                                  onClick={() =>
-                                    setFgAutoSetOpen((value) => !value)
-                                  }
-                                  aria-expanded={fgAutoSetOpen}
-                                >
-                                  {fgAutoSetOpen ? "▾" : "▸"} Advanced reelStrip mapping
-                                </button>
-                                {fgAutoSetOpen && (
-                                  <div className="reelset-rules">
-                                    {fgReelSets.map((set, i) => (
-                                      <div className="reelset-rule" key={i}>
-                                        <strong className="reelset-rule-name">
-                                          {set.name || `Set ${i + 1}`}
-                                        </strong>
-                                        <label className="db-field">
-                                          <span className="db-label">
-                                            Position (0-based)
-                                          </span>
-                                          <input
-                                            className="select reelstrip-rows"
-                                            type="number"
-                                            min={0}
-                                            value={fgSetRules[i]?.position ?? ""}
-                                            onChange={(e) =>
-                                              setFgSetRules((prev) =>
-                                                prev.map((rule, j) =>
-                                                  j === i
-                                                    ? { ...rule, position: e.target.value }
-                                                    : rule
-                                                )
-                                              )
-                                            }
-                                          />
-                                        </label>
-                                        <label className="db-field">
-                                          <span className="db-label">RNG range</span>
-                                          <input
-                                            className="select db-search"
-                                            type="text"
-                                            placeholder="e.g. 100-200"
-                                            value={fgSetRules[i]?.range ?? ""}
-                                            onChange={(e) =>
-                                              setFgSetRules((prev) =>
-                                                prev.map((rule, j) =>
-                                                  j === i
-                                                    ? { ...rule, range: e.target.value }
-                                                    : rule
-                                                )
-                                              )
-                                            }
-                                          />
-                                        </label>
-                                      </div>
-                                    ))}
-                                    <p className="muted small">
-                                      For each spin, the first matching range at
-                                      the given position in its feature interval
-                                      selects the reelStrip set. No match uses
-                                      the selected default set.
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
                             {fgInterval <= 0 ? (
                               <p className="error">
                                 “Feature ends at” must be ≥ “Feature starts
