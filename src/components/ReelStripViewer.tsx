@@ -1335,6 +1335,51 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
       </div>
     );
 
+    const mainGridUi = reels && (
+      <div className="db-controls">
+        <div className="db-field">
+          <span className="db-label">Reels (columns)</span>
+          <div className="db-amount">{reels.length}</div>
+        </div>
+        <label className="db-field">
+          <span className="db-label">Rows</span>
+          <input
+            className="select reelstrip-rows"
+            type="number"
+            min={1}
+            max={50}
+            value={rows}
+            onChange={(e) => changeRows(Number(e.target.value))}
+          />
+        </label>
+        <label className="db-field">
+          <span className="db-label">Offset (landing row)</span>
+          <select
+            className="select"
+            value={offset}
+            onChange={(e) => changeOffset(Number(e.target.value))}
+          >
+            {Array.from({ length: rows }, (_, i) => i).map((i) => (
+              <option key={i} value={i}>
+                {i}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="db-field">
+          <span className="db-label">RNG start (slot)</span>
+          <input
+            className="select reelstrip-rows"
+            type="number"
+            min={0}
+            value={slotStart}
+            onChange={(e) => changeSlotStart(Number(e.target.value))}
+            title="Which position in the RNG the slot's reel stops start from (default 0). The grid shows the values beginning at this position (e.g. 1 = start from the 2nd RNG value)."
+          />
+        </label>
+      </div>
+    );
+
     const mainAdvUi = sets && sets.length > 1 && (
       <>
                 <div className="reelset-advanced">
@@ -1403,21 +1448,6 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
 
     const fgConfigUi = fgReels && (
       <>
-                    {fgReels && (
-                      <label
-                        className="free-game-arm"
-                        title="For games whose free-game symbols are weighted (not plain 0-99 direct stops). Uses the same cumulative-weight mapping as the main reelStrip viewer, driven by a feature interval and a reelStops position instead of auto-detected 5-value runs."
-                      >
-                        <input
-                          type="checkbox"
-                          checked={fgCustomMode}
-                          onChange={(e) => setFgCustomMode(e.target.checked)}
-                        />
-                        Custom (weighted symbols)
-                      </label>
-                    )}
-        {(fgCustomMode || fgSets.length > 0) && (
-          <>
                         <div className="db-controls">
                           <div className="db-field">
                             <span className="db-label">Reels (columns)</span>
@@ -1458,6 +1488,21 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
                             </select>
                           </label>
                         </div>
+                    {fgReels && (
+                      <label
+                        className="free-game-arm"
+                        title="For games whose free-game symbols are weighted (not plain 0-99 direct stops). Uses the same cumulative-weight mapping as the main reelStrip viewer, driven by a feature interval and a reelStops position instead of auto-detected 5-value runs."
+                      >
+                        <input
+                          type="checkbox"
+                          checked={fgCustomMode}
+                          onChange={(e) => setFgCustomMode(e.target.checked)}
+                        />
+                        Custom (weighted symbols)
+                      </label>
+                    )}
+        {(fgCustomMode || fgSets.length > 0) && (
+          <>
             {fgCustomMode && (
               <>
                             <div className="db-controls">
@@ -1591,7 +1636,7 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
 
     return (
       <div className="panel" ref={panelRef}>
-        {uploadSlot && createPortal(<>{mainUpload}{mainAdvUi}</>, uploadSlot)}
+        {uploadSlot && createPortal(<>{mainUpload}{mainGridUi}{mainAdvUi}</>, uploadSlot)}
         {fgUploadSlot && createPortal(<>{fgUpload}{fgConfigUi}</>, fgUploadSlot)}
         <button
           type="button"
@@ -1633,52 +1678,6 @@ const ReelStripViewer = forwardRef<ReelStripHandle, Props>(
 
             {reels && (
               <>
-                <div className="db-controls">
-                  <div className="db-field">
-                    <span className="db-label">Reels (columns)</span>
-                    <div className="db-amount">{reels.length}</div>
-                  </div>
-
-                  <label className="db-field">
-                    <span className="db-label">Rows</span>
-                    <input
-                      className="select reelstrip-rows"
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={rows}
-                      onChange={(e) => changeRows(Number(e.target.value))}
-                    />
-                  </label>
-
-                  <label className="db-field">
-                    <span className="db-label">Offset (landing row)</span>
-                    <select
-                      className="select"
-                      value={offset}
-                      onChange={(e) => changeOffset(Number(e.target.value))}
-                    >
-                      {Array.from({ length: rows }, (_, i) => i).map((i) => (
-                        <option key={i} value={i}>
-                          {i}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="db-field">
-                    <span className="db-label">RNG start (slot)</span>
-                    <input
-                      className="select reelstrip-rows"
-                      type="number"
-                      min={0}
-                      value={slotStart}
-                      onChange={(e) => changeSlotStart(Number(e.target.value))}
-                      title="Which position in the RNG the slot's reel stops start from (default 0). The grid shows the values beginning at this position (e.g. 1 = start from the 2nd RNG value)."
-                    />
-                  </label>
-                </div>
-
                 <div className="reelstrip-scroll">
                   <div
                     className="reelstrip-inner"

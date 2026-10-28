@@ -13,6 +13,10 @@ interface Props {
   setSlotStart: Dispatch<SetStateAction<number>>;
   advRules: AdvRule[];
   setAdvRules: Dispatch<SetStateAction<AdvRule[]>>;
+  pattern: string;
+  setPattern: Dispatch<SetStateAction<string>>;
+  maxRng: string;
+  setMaxRng: Dispatch<SetStateAction<string>>;
   /** Callback refs for the slots the DB / reelStrip viewers portal their file
    *  uploads into. */
   dbSlotRef: (el: HTMLDivElement | null) => void;
@@ -34,6 +38,10 @@ export default function ConfigPanel({
   setSlotStart,
   advRules,
   setAdvRules,
+  pattern,
+  setPattern,
+  maxRng,
+  setMaxRng,
   dbSlotRef,
   reelSlotRef,
   fgSlotRef,
@@ -65,54 +73,38 @@ export default function ConfigPanel({
         <div className="panel-title">DB search</div>
         <div ref={dbSlotRef} />
 
-      <h3 className="db-label">reelStrip viewer</h3>
-      <div className="db-controls">
-        <label className="db-field">
-          <span className="db-label">Rows</span>
-          <input
-            className="select reelstrip-rows"
-            type="number"
-            min={1}
-            max={50}
-            value={rows}
-            onChange={(e) => changeRows(Number(e.target.value))}
-          />
-        </label>
-        <label className="db-field">
-          <span className="db-label">Offset (landing row)</span>
-          <select
-            className="select reelstrip-rows"
-            value={offset}
-            onChange={(e) => setOffset(Number(e.target.value))}
-          >
-            {Array.from({ length: rows }, (_, i) => (
-              <option key={i} value={i}>
-                {i}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="db-field">
-          <span className="db-label">RNG start (slot)</span>
-          <input
-            className="select reelstrip-rows"
-            type="number"
-            min={0}
-            value={slotStart}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              setSlotStart(Math.max(0, Math.floor(Number.isFinite(v) ? v : 0)));
-            }}
-          />
-        </label>
-      </div>
+      <h3 className="db-label">DB filters</h3>
+      <label className="db-field">
+        <span className="db-label">
+          reelStop filter (per position, blank = any)
+        </span>
+        <input
+          className="select db-search"
+          type="text"
+          value={pattern}
+          onChange={(e) => setPattern(e.target.value)}
+          placeholder="e.g. ,,,,,,,,2"
+        />
+      </label>
+      <label className="db-field">
+        <span className="db-label">
+          RNG count (single = exact length, range = in range, blank = no bound)
+        </span>
+        <input
+          className="select db-search"
+          type="text"
+          value={maxRng}
+          onChange={(e) => setMaxRng(e.target.value)}
+          placeholder="e.g. 300 or 100-300"
+        />
+      </label>
 
       <h3 className="db-label">Advanced filter</h3>
       <div className="adv-filter">
         <p className="muted small">
           Position and value each take a single number (<code>43</code>) or a
-          range (<code>20-30</code>). Rows are combined with AND. These feed the
-          Advanced filter in the DB section.
+          range (<code>20-30</code>). Rows are combined with AND. Used by every DB
+          search in section 5.
         </p>
         {advRules.map((r, i) => (
           <div key={i} className="adv-rule">

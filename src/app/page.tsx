@@ -74,6 +74,8 @@ export default function Home() {
   const [advRules, setAdvRules] = useState<{ pos: string; val: string }[]>([
     { pos: "", val: "" },
   ]);
+  const [dbPattern, setDbPattern] = useState("");
+  const [dbMaxRng, setDbMaxRng] = useState("");
   const [reelSetNames, setReelSetNames] = useState<string[]>([]);
   const [setRules, setSetRules] = useState<{ position: string; range: string }[]>(
     []
@@ -730,6 +732,10 @@ export default function Home() {
               setSlotStart={setSlotStart}
               advRules={advRules}
               setAdvRules={setAdvRules}
+              pattern={dbPattern}
+              setPattern={setDbPattern}
+              maxRng={dbMaxRng}
+              setMaxRng={setDbMaxRng}
               dbSlotRef={setDbSlot}
               reelSlotRef={setReelSlot}
               fgSlotRef={setFgSlot}
@@ -773,6 +779,10 @@ export default function Home() {
               autoFindToken={autoFindReel?.token ?? 0}
               advRules={advRules}
               setAdvRules={setAdvRules}
+              pattern={dbPattern}
+              setPattern={setDbPattern}
+              maxRng={dbMaxRng}
+              setMaxRng={setDbMaxRng}
               uploadSlot={dbSlot}
             />
 

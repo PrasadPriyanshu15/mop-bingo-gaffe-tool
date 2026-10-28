@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Award, ReelStopCandidate } from "@/lib/db";
+import { useCurrency } from "@/lib/CurrencyContext";
 import { matchesPattern, parsePattern, patternIsActive } from "@/lib/reelstop";
 
 export interface AwardResult {
@@ -46,6 +47,7 @@ export default function AwardResults({
   reelStripLoaded,
   hideEmpty,
 }: Props) {
+  const { fmt } = useCurrency();
   const [copied, setCopied] = useState<string | null>(null);
   const [applied, setApplied] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -151,6 +153,9 @@ export default function AwardResults({
                   {isEmpty ? "·" : open ? "▾" : "▸"}
                 </span>
                 <span className="award-title">Award #{award.awardId}</span>
+                <span className="award-badge" title="Award amount">
+                  {fmt(award.amount)}
+                </span>
                 <span
                   className={
                     "award-badge" + (isEmpty ? " award-badge-empty" : "")

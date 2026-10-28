@@ -669,6 +669,11 @@ interface Props {
    *  the same list. */
   advRules: { pos: string; val: string }[];
   setAdvRules: Dispatch<SetStateAction<{ pos: string; val: string }[]>>;
+  /** reelStop filter and RNG count — owned by the page, entered in Config. */
+  pattern: string;
+  setPattern: Dispatch<SetStateAction<string>>;
+  maxRng: string;
+  setMaxRng: Dispatch<SetStateAction<string>>;
   /** Slot inside the Config section where the DB structure toggle + .db upload
    *  are rendered (portaled). Inline fallback until the slot mounts. */
   uploadSlot?: HTMLElement | null;
@@ -703,6 +708,10 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
     autoFindToken,
     advRules,
     setAdvRules,
+    pattern,
+    setPattern,
+    maxRng,
+    setMaxRng,
     uploadSlot,
   },
   ref
@@ -729,31 +738,8 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
   // Whether the amount was hand-typed. While false, it mirrors totalPayout and
   // shows in yellow; once true it holds a custom value in regular text.
   const [custom, setCustom] = useState(false);
-  const [pattern, setPattern] = useState("");
-  const [maxRng, setMaxRng] = useState("");
   // "total" searches the amount field; "each" searches every selected win.
   const [mode, setMode] = useState<"total" | "each">("total");
-
-  // Advanced positional filter. The comma-per-position `pattern` above needs one
-  // leading comma per skipped position, which is impractical for a stop deep in
-  // the RNG (e.g. position 43). Each advanced row names a position — or position
-  // range — and a value — or value range — to search for there ("positions 20-30
-  // hold any value 500-600"). Rows are ANDed; blank rows are ignored.
-  const [advOpen, setAdvOpen] = useState(false);
-
-  function setAdvRule(i: number, key: "pos" | "val", value: string) {
-    setAdvRules((prev) =>
-      prev.map((r, j) => (j === i ? { ...r, [key]: value } : r))
-    );
-  }
-  function addAdvRule() {
-    setAdvRules((prev) => [...prev, { pos: "", val: "" }]);
-  }
-  function removeAdvRule(i: number) {
-    setAdvRules((prev) =>
-      prev.length > 1 ? prev.filter((_, j) => j !== i) : [{ pos: "", val: "" }]
-    );
-  }
 
   // Build AdvancedRule[] from the rows. A row is used only when both fields are
   // filled; a filled-but-unparseable row flags an error so callers can refuse
@@ -1580,104 +1566,10 @@ const DbViewer = forwardRef<DbViewerHandle, Props>(function DbViewer(
                 </div>
               )}
 
-              <label className="db-field">
-                <span className="db-label">
-                  reelStop filter (per position, blank = any)
-                </span>
-                <input
-                  className="select db-search"
-                  type="text"
-                  value={pattern}
-                  onChange={(e) => setPattern(e.target.value)}
-                  placeholder="e.g. ,,,,,,,,2"
-                  onKeyDown={onEnter}
-                />
-              </label>
-
-              <div className="db-field">
-                <button
-                  type="button"
-                  className={"btn btn-small" + (advOpen ? " on" : "")}
-                  onClick={() => setAdvOpen((v) => !v)}
-                  title="Search a value at an explicit position / position range — instead of counting commas"
-                >
-                  {advOpen ? "▾ Advanced filter" : "▸ Advanced filter"}
-                </button>
-              </div>
-
-              {advOpen && (
-                <div className="adv-filter">
-                  <p className="muted small">
-                    Search a value at an explicit position — no comma-counting.
-                    Position and value each take a single number (<code>43</code>
-                    ) or a range (<code>20-30</code>). Rows are combined with AND.
-                    Example: position <code>20-30</code>, value{" "}
-                    <code>500-600</code> keeps any RNG that has a value 500–600
-                    somewhere in positions 20–30.
-                  </p>
-                  {advRules.map((r, i) => (
-                    <div key={i} className="adv-rule">
-                      <label className="db-field">
-                        <span className="db-label">Position (0-based)</span>
-                        <input
-                          className="select db-search"
-                          type="text"
-                          value={r.pos}
-                          onChange={(e) => setAdvRule(i, "pos", e.target.value)}
-                          placeholder="e.g. 43 or 20-30"
-                          onKeyDown={onEnter}
-                        />
-                      </label>
-                      <label className="db-field">
-                        <span className="db-label">Value</span>
-                        <input
-                          className="select db-search"
-                          type="text"
-                          value={r.val}
-                          onChange={(e) => setAdvRule(i, "val", e.target.value)}
-                          placeholder="e.g. 500 or 500-600"
-                          onKeyDown={onEnter}
-                        />
-                      </label>
-                      {advRules.length > 1 && (
-                        <button
-                          type="button"
-                          className="btn btn-small adv-rule-del"
-                          onClick={() => removeAdvRule(i)}
-                          title="Remove this rule"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    className="btn btn-small"
-                    onClick={addAdvRule}
-                    title="Add another position/value rule (ANDed)"
-                  >
-                    + rule
-                  </button>
-                </div>
-              )}
-
-              {openedType !== null && (
-                <label className="db-field">
-                  <span className="db-label">
-                    RNG count (single = exact length, range = in range, blank =
-                    no bound)
-                  </span>
-                  <input
-                    className="select"
-                    type="text"
-                    value={maxRng}
-                    onChange={(e) => setMaxRng(e.target.value)}
-                    placeholder="e.g. 300 or 100-300"
-                    onKeyDown={onEnter}
-                  />
-                </label>
-              )}
+              <p className="muted small">
+                reelStop filter, RNG count and Advanced filter are set in the
+                Config section.
+              </p>
 
               <p className="muted small">
                 Leave the amount blank and type a filter to find every amount that
